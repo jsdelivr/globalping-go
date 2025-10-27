@@ -1,4 +1,4 @@
-package main
+package globalping
 
 import (
 	"bytes"
@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/andybalholm/brotli"
-	"github.com/jsdelivr/globalping-cli/utils"
 )
 
 var (
@@ -256,7 +255,7 @@ type TLSCertificateIssuer struct {
 
 type HTTPTLSCertificate struct {
 	Protocol       string                `json:"protocol"`       // The negotiated SSL/TLS protocol version.
-	ChipherName    string                `json:"cipherName"`     // The OpenSSL name of the cipher suite.
+	CipherName     string                `json:"cipherName"`     // The OpenSSL name of the cipher suite.
 	Authorized     bool                  `json:"authorized"`     // Indicates whether a trusted authority signed the certificate
 	Error          string                `json:"error"`          // The reason for rejecting the certificate if authorized is false
 	CreatedAt      time.Time             `json:"createdAt"`      // The creation date and time of the certificate
@@ -349,7 +348,7 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		}
 
 		if resp.StatusCode == http.StatusUnprocessableEntity {
-			err.Message = fmt.Sprintf("%s - please try a different location", utils.TextFromSentence(err.Message))
+			err.Message = fmt.Sprintf("%s - please try a different location", TextFromSentence(err.Message))
 			return nil, err
 		}
 
@@ -361,18 +360,18 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 			remaining := rateLimitRemaining + creditsRemaining
 			if token == nil {
 				if remaining > 0 {
-					err.Message = fmt.Sprintf(moreCreditsRequiredNoAuthErr, utils.Pluralize(remaining, "credit"), requestCost, utils.FormatSeconds(rateLimitReset))
+					err.Message = fmt.Sprintf(moreCreditsRequiredNoAuthErr, Pluralize(remaining, "credit"), requestCost, FormatSeconds(rateLimitReset))
 					return nil, err
 				}
-				err.Message = fmt.Sprintf(noCreditsNoAuthErr, utils.FormatSeconds(rateLimitReset))
+				err.Message = fmt.Sprintf(noCreditsNoAuthErr, FormatSeconds(rateLimitReset))
 				return nil, err
 
 			} else {
 				if remaining > 0 {
-					err.Message = fmt.Sprintf(moreCreditsRequiredAuthErr, utils.Pluralize(remaining, "credit"), requestCost, utils.FormatSeconds(rateLimitReset))
+					err.Message = fmt.Sprintf(moreCreditsRequiredAuthErr, Pluralize(remaining, "credit"), requestCost, FormatSeconds(rateLimitReset))
 					return nil, err
 				}
-				err.Message = fmt.Sprintf(noCreditsAuthErr, utils.FormatSeconds(rateLimitReset))
+				err.Message = fmt.Sprintf(noCreditsAuthErr, FormatSeconds(rateLimitReset))
 				return nil, err
 			}
 		}

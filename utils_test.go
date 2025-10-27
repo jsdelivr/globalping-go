@@ -1,4 +1,4 @@
-package main
+package globalping
 
 func getTokenJSON() []byte {
 	return []byte(`{

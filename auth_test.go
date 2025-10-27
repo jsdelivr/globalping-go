@@ -1,4 +1,4 @@
-package main
+package globalping
 
 import (
 	"encoding/json"
@@ -400,6 +400,7 @@ func Test_Logout_AccessToken_Is_Set(t *testing.T) {
 			Expiry:      time.Now().Add(time.Hour),
 		},
 		OnTokenRefresh: func(token *Token) {
+			onTokenRefreshCalled = true
 			assert.Nil(t, token)
 		},
 	})
@@ -407,5 +408,5 @@ func Test_Logout_AccessToken_Is_Set(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.False(t, onTokenRefreshCalled)
+	assert.True(t, onTokenRefreshCalled)
 }

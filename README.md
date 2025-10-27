@@ -7,7 +7,7 @@ The official Go client for the [Globalping API](https://globalping.io/docs/api.g
 To install the client, run the following command:
 
 ```bash
-go get github.com/globalping/globalping-go
+go get github.com/jsdelivr/globalping-go
 ```
 
 ## Usage
@@ -15,9 +15,11 @@ go get github.com/globalping/globalping-go
 To use the client, import it into your Go code:
 
 ```go
-import "github.com/globalping/globalping-go"
+import "github.com/jsdelivr/globalping-go"
 
 func main() {
+	ctx := context.Background()
+
 	client := globalping.NewClient(globalping.Config{
 		UserAgent: "<your_user_agent>",
 		AuthToken: &globalping.Token{
@@ -37,13 +39,13 @@ func main() {
 		},
 	}
 
-	res, err := client.CreateMeasurement(o)
+	res, err := client.CreateMeasurement(ctx, o)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	measurement, err := client.AwaitMeasurement(res.ID)
+	measurement, err := client.AwaitMeasurement(ctx, res.ID)
 	if err != nil {
 		fmt.Println(err)
 		return
