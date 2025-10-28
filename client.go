@@ -99,7 +99,7 @@ type client struct {
 }
 
 // Creates a new client with the given configuration.
-// Note: The client caches API responses. Set CacheExpireSeconds to configure the cache entry expiration time in seconds, 0 means no expiration. Use CleanCache to clear the expired cached entries.
+// Note: The client caches API responses. Set CacheExpireSeconds to configure the cache entry expiration time in seconds, 0 means no expiration. Use CacheClean to clear the expired cached entries.
 func NewClient(config Config) Client {
 	c := &client{
 		mu:                 sync.RWMutex{},

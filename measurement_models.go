@@ -40,7 +40,7 @@ type MeasurementOptions struct {
 	Query     *QueryOptions   `json:"query,omitempty"`
 	Request   *RequestOptions `json:"request,omitempty"`
 	Protocol  string          `json:"protocol,omitempty"`
-	Port      uint16          `json:"port"`
+	Port      uint16          `json:"port,omitempty"`
 	Resolver  string          `json:"resolver,omitempty"`
 	Trace     bool            `json:"trace,omitempty"`
 	Packets   int             `json:"packets,omitempty"`
