@@ -34,6 +34,9 @@ type Client interface {
 	// https://globalping.io/docs/api.globalping.io#get-/v1/measurements/-id-
 	GetMeasurementRaw(ctx context.Context, id string) ([]byte, error)
 
+	// Opens and listens on a local port for authorization from Globalping's OAuth2 server.
+	// This is meant to be used to locally authorize the client, e.g. for CLI or other local applications.
+	//
 	// Returns a link to be used for authorization and listens for the authorization callback.
 	//
 	// onTokenRefresh will be called if the authorization is successful.

@@ -68,7 +68,7 @@ func (c *client) Authorize(ctx context.Context, callback func(error)) (*Authoriz
 			http.Redirect(w, req, c.dashboardURL+"/authorize/success", http.StatusFound)
 		}
 		go func() {
-			server.Shutdown(req.Context())
+			server.Shutdown(context.Background())
 			if err == nil {
 				c.updateToken(token)
 			}
@@ -212,8 +212,8 @@ func (c *client) exchange(ctx context.Context, form url.Values, verifier string,
 }
 
 func (c *client) getToken(ctx context.Context) (*Token, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.token == nil {
 		return nil, nil
 	}
@@ -229,8 +229,12 @@ func (c *client) getToken(ctx context.Context) (*Token, error) {
 	t, err := c.refreshToken(ctx, c.token.RefreshToken)
 	if err != nil {
 		e, ok := err.(*AuthorizeError)
-		if ok && e.ErrorType == ErrTypeInvalidGrant && c.onTokenRefresh != nil {
-			c.onTokenRefresh(nil)
+		// If the refresh token is invalid, clear the token
+		if ok && e.ErrorType == ErrTypeInvalidGrant {
+			c.token = nil
+			if c.onTokenRefresh != nil {
+				c.onTokenRefresh(nil)
+			}
 		}
 		return nil, err
 	}
@@ -280,7 +284,7 @@ func (c *client) tryToRefreshToken(ctx context.Context, refreshToken string) boo
 	if err != nil {
 		e, ok := err.(*AuthorizeError)
 		// If the refresh token is invalid, clear the token
-		if ok && e.ErrorType == ErrTypeInvalidGrant && c.onTokenRefresh != nil {
+		if ok && e.ErrorType == ErrTypeInvalidGrant {
 			c.token = nil
 			if c.onTokenRefresh != nil {
 				c.onTokenRefresh(nil)
