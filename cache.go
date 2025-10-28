@@ -13,8 +13,8 @@ func (c *client) CacheClean() {
 }
 
 func (c *client) CachePurge() {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.cache = map[string]*cacheEntry{}
 }
 
@@ -25,6 +25,9 @@ func (c *client) getETag(id string) string {
 	if !ok {
 		return ""
 	}
+	if e.ExpireAt > 0 && e.ExpireAt < time.Now().Unix() {
+		return ""
+	}
 	return e.ETag
 }
 
@@ -33,6 +36,9 @@ func (c *client) getCachedResponse(id string) []byte {
 	defer c.mu.RUnlock()
 	e, ok := c.cache[id]
 	if !ok {
+		return nil
+	}
+	if e.ExpireAt > 0 && e.ExpireAt < time.Now().Unix() {
 		return nil
 	}
 	return e.Data

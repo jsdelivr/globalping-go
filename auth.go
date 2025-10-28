@@ -49,7 +49,11 @@ type AuthorizeResponse struct {
 }
 
 func (c *client) Authorize(ctx context.Context, callback func(error)) (*AuthorizeResponse, error) {
-	verifier := generateVerifier()
+	verifier, err := generateVerifier()
+	if err != nil {
+		return nil, err
+	}
+
 	mux := http.NewServeMux()
 	server := &http.Server{
 		Handler: mux,
@@ -71,7 +75,6 @@ func (c *client) Authorize(ctx context.Context, callback func(error)) (*Authoriz
 			callback(err)
 		}()
 	})
-	var err error
 	var ln net.Listener
 	ports := []int{60000, 60010, 60020, 60030, 60040, 60100, 60110, 60120, 60130, 60140}
 	port := ""
@@ -93,7 +96,7 @@ func (c *client) Authorize(ctx context.Context, callback func(error)) (*Authoriz
 	}()
 	callbackURL = "http://localhost:" + port + "/callback"
 	q := url.Values{}
-	q.Set("client_id", c.authClientId)
+	q.Set("client_id", c.authClientID)
 	q.Set("code_challenge", generateS256Challenge(verifier))
 	q.Set("code_challenge_method", "S256")
 	q.Set("response_type", "code")
@@ -158,7 +161,7 @@ func (c *client) exchange(ctx context.Context, form url.Values, verifier string,
 		}
 	}
 	q := url.Values{}
-	q.Set("client_id", c.authClientId)
+	q.Set("client_id", c.authClientID)
 	q.Set("client_secret", c.authClientSecret)
 	q.Set("code", code)
 	q.Set("code_verifier", verifier)
@@ -180,6 +183,8 @@ func (c *client) exchange(ctx context.Context, form url.Values, verifier string,
 			Description: err.Error(),
 		}
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		err := &AuthorizeError{
 			Code:        resp.StatusCode,
@@ -298,7 +303,7 @@ func (c *client) tryToRefreshToken(ctx context.Context, refreshToken string) boo
 
 func (c *client) refreshToken(ctx context.Context, token string) (*Token, error) {
 	q := url.Values{}
-	q.Set("client_id", c.authClientId)
+	q.Set("client_id", c.authClientID)
 	q.Set("client_secret", c.authClientSecret)
 	q.Set("refresh_token", token)
 	q.Set("grant_type", "refresh_token")
@@ -318,6 +323,8 @@ func (c *client) refreshToken(ctx context.Context, token string) (*Token, error)
 			Description: err.Error(),
 		}
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		err := &AuthorizeError{
 			Code:        resp.StatusCode,
@@ -381,6 +388,8 @@ func (c *client) introspection(ctx context.Context, token string) (*Introspectio
 			Description: err.Error(),
 		}
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		err := &AuthorizeError{
 			Code:        resp.StatusCode,
@@ -422,6 +431,8 @@ func (c *client) RevokeToken(ctx context.Context, token string) error {
 			Description: err.Error(),
 		}
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		err := &AuthorizeError{
 			Code:        resp.StatusCode,
@@ -434,12 +445,12 @@ func (c *client) RevokeToken(ctx context.Context, token string) error {
 	return nil
 }
 
-func generateVerifier() string {
+func generateVerifier() (string, error) {
 	data := make([]byte, 32)
 	if _, err := rand.Read(data); err != nil {
-		panic(err)
+		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(data)
+	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
 func generateS256Challenge(verifier string) string {

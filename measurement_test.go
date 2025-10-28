@@ -981,6 +981,7 @@ func Test_GetMeasurement_WithEtag(t *testing.T) {
 		err := json.NewEncoder(w).Encode(m)
 		assert.NoError(t, err)
 	}))
+	defer s.Close()
 
 	client := NewClient(Config{APIURL: s.URL})
 
@@ -1027,6 +1028,7 @@ func Test_GetMeasurement_WithBrotli(t *testing.T) {
 		err := json.NewEncoder(rW).Encode(m)
 		assert.NoError(t, err)
 	}))
+	defer s.Close()
 
 	client := NewClient(Config{APIURL: s.URL})
 
