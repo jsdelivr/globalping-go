@@ -68,6 +68,9 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 
 	result := &MeasurementCreateResponse{}
 	err = json.Unmarshal(b, result)
+	if err != nil {
+		return nil, err
+	}
 
 	return result, nil
 }
@@ -138,8 +141,8 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 		b := c.getCachedResponse(id)
 		if b == nil {
 			return nil, &MeasurementError{
-				Type:    "unexpected_error",
-				Message: "response not found in etags cache",
+				Type:    "cache_error",
+				Message: "cached response unavailable",
 			}
 		}
 		return b, nil

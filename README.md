@@ -63,7 +63,7 @@ Returns the current state of the measurement.
 
 ### Await a measurement
 
-Similar to GetMeasurement(), but keeps pooling the API until the measurement is finished, and returns its final state.
+Similar to GetMeasurement(), but keeps polling the API until the measurement is finished, and returns its final state.
 
 ```go
 	measurement, err := client.AwaitMeasurement(ctx, res.ID)
