@@ -18,9 +18,9 @@ To use the client, import it into your Go code:
 import "github.com/jsdelivr/globalping-go"
 
 func main() {
-	client := globalping.NewClient(globalping.Config{
-		AuthToken: "<your_access_token>", // Optional
-	})
+  client := globalping.NewClient(globalping.Config{
+    AuthToken: "<your_access_token>", // Optional
+  })
 }
 ```
 
@@ -29,22 +29,22 @@ func main() {
 Creates a new measurement with the set parameters. The measurement runs asynchronously, and you can retrieve its current state using GetMeasurement() or wait for its final state using AwaitMeasurement().
 
 ```go
-	o := &globalping.MeasurementCreate{
-		Type:   globalping.MeasurementTypePing,
-		Target: "google.com",
-		Limit:  1,
-		Locations: []globalping.Locations{
-			{
-				Magic: "world",
-			},
-		},
-	}
+  o := &globalping.MeasurementCreate{
+    Type:   globalping.MeasurementTypePing,
+    Target: "google.com",
+    Limit:  1,
+    Locations: []globalping.Locations{
+      {
+        Magic: "world",
+      },
+    },
+  }
 
-	res, err := client.CreateMeasurement(ctx, o)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+  res, err := client.CreateMeasurement(ctx, o)
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
 ```
 
 ### Get a measurement
@@ -52,13 +52,13 @@ Creates a new measurement with the set parameters. The measurement runs asynchro
 Returns the current state of the measurement.
 
 ```go
-	measurement, err := client.GetMeasurement(ctx, res.ID)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+  measurement, err := client.GetMeasurement(ctx, res.ID)
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
 
-	fmt.Printf("%+v\n", measurement)
+  fmt.Printf("%+v\n", measurement)
 ```
 
 ### Await a measurement
@@ -66,13 +66,13 @@ Returns the current state of the measurement.
 Similar to GetMeasurement(), but keeps polling the API until the measurement is finished, and returns its final state.
 
 ```go
-	measurement, err := client.AwaitMeasurement(ctx, res.ID)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+  measurement, err := client.AwaitMeasurement(ctx, res.ID)
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
 
-	fmt.Printf("%+v\n", measurement)
+  fmt.Printf("%+v\n", measurement)
 ```
 
 ### Get raw measurement bytes
@@ -80,11 +80,11 @@ Similar to GetMeasurement(), but keeps polling the API until the measurement is 
 Returns the raw measurement bytes.
 
 ```go
-	b, err := client.GetMeasurementRaw(ctx, res.ID)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+  b, err := client.GetMeasurementRaw(ctx, res.ID)
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
 ```
 
 ### Probes
@@ -92,13 +92,13 @@ Returns the raw measurement bytes.
 Returns a list of all probes currently online and their metadata, such as location and assigned tags.
 
 ```go
-	probes, err := client.Probes(ctx)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+  probes, err := client.Probes(ctx)
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
 
-	fmt.Printf("%+v\n", probes)
+  fmt.Printf("%+v\n", probes)
 ```
 
 ### Get rate limits
@@ -106,13 +106,13 @@ Returns a list of all probes currently online and their metadata, such as locati
 Returns rate limits for the current user (if authenticated) or IP address (if not authenticated).
 
 ```go
-	limits, err := client.Limits(ctx)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+  limits, err := client.Limits(ctx)
+  if err != nil {
+    fmt.Println(err)
+    return
+  }
 
-	fmt.Printf("%+v\n", limits)
+  fmt.Printf("%+v\n", limits)
 ```
 
 ### Error handling
@@ -120,15 +120,15 @@ Returns rate limits for the current user (if authenticated) or IP address (if no
 API errors are returned as `*globalping.MeasurementError` instances. You can access the error code and headers using the `StatusCode` and `Header` fields.
 
 ```go
-	measurement, err := client.GetMeasurement(ctx, res.ID)
-	if err != nil {
-		if measurementErr, ok := err.(*globalping.MeasurementError); ok {
-			// measurementErr.StatusCode
-			// measurementErr.Header
-		} else {
-			fmt.Println(err)
-		}
-	}
+  measurement, err := client.GetMeasurement(ctx, res.ID)
+  if err != nil {
+    if measurementErr, ok := err.(*globalping.MeasurementError); ok {
+      // measurementErr.StatusCode
+      // measurementErr.Header
+    } else {
+      fmt.Println(err)
+    }
+  }
 ```
 
 ### Advanced configuration
