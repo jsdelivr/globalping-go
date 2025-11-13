@@ -7,8 +7,8 @@ import (
 	"net/http"
 )
 
-func (c *client) Limits(ctx context.Context) (*LimitsResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", APIURL+"/limits", nil)
+func (c *client) Probes(ctx context.Context) (*ProbesResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", APIURL+"/probes", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -29,8 +29,8 @@ func (c *client) Limits(ctx context.Context) (*LimitsResponse, error) {
 			return nil, err
 		}
 
-		resErr := &LimitsErrorResponse{
-			Error: &LimitsError{
+		resErr := &ProbesErrorResponse{
+			Error: &ProbesError{
 				StatusCode: res.StatusCode,
 				Header:     res.Header,
 			},
@@ -48,11 +48,11 @@ func (c *client) Limits(ctx context.Context) (*LimitsResponse, error) {
 		return nil, err
 	}
 
-	limits := &LimitsResponse{}
-	err = json.Unmarshal(b, limits)
+	probes := &ProbesResponse{}
+	err = json.Unmarshal(b, probes)
 	if err != nil {
 		return nil, err
 	}
 
-	return limits, nil
+	return probes, nil
 }

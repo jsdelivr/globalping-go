@@ -2,419 +2,77 @@ package globalping
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/andybalholm/brotli"
 
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	defaultDate = "Thu, 13 Nov 2025 07:13:37 GMT"
+)
+
 func Test_CreateMeasurement_Valid(t *testing.T) {
 	server := generateServer(`{"id":"abcd","probesCount":1}`, http.StatusAccepted)
 	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
+
+	client := NewClient(Config{})
 
 	opts := &MeasurementCreate{}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
-	assert.Equal(t, "abcd", res.ID)
-	assert.Equal(t, 1, res.ProbesCount)
 	assert.NoError(t, err)
+	assert.Equal(t, &MeasurementCreateResponse{
+		ID:          "abcd",
+		ProbesCount: 1,
+	}, res)
 }
 
 func Test_CreateMeasurement_Authorized(t *testing.T) {
 	server := generateServerAuthorized(`{"id":"abcd","probesCount":1}`)
 	defer server.Close()
+
 	client := NewClient(Config{
-		AuthToken: &Token{
-			AccessToken: "secret",
-			Expiry:      time.Now().Add(1 * time.Hour),
-		},
-		APIURL: server.URL,
+		AuthToken: "secret",
 	})
 
 	opts := &MeasurementCreate{}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
-	assert.Equal(t, "abcd", res.ID)
-	assert.Equal(t, 1, res.ProbesCount)
 	assert.NoError(t, err)
+	assert.Equal(t, &MeasurementCreateResponse{
+		ID:          "abcd",
+		ProbesCount: 1,
+	}, res)
 }
 
 func Test_CreateMeasurement_AuthorizedError(t *testing.T) {
 	server := generateServerAuthorized(`{"id":"abcd","probesCount":1}`)
 	defer server.Close()
-	client := NewClient(Config{
-		APIURL: server.URL,
-	})
+
+	client := NewClient(Config{})
 
 	opts := &MeasurementCreate{}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.Nil(t, res)
-	assert.EqualError(t, err, "Unauthorized.")
-}
-
-func Test_CreateMeasurement_TokenRefreshed(t *testing.T) {
-	now := time.Now()
-	timeNow = func() time.Time {
-		return now
-	}
-	defer func() {
-		timeNow = time.Now
-	}()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/oauth/token" {
-			if r.Method != http.MethodPost {
-				t.Fatalf("expected POST request, got %s", r.Method)
-			}
-			err := r.ParseForm()
-			if err != nil {
-				t.Fatal(err)
-			}
-			assert.Equal(t, "<client_id>", r.Form.Get("client_id"))
-			assert.Equal(t, "<client_secret>", r.Form.Get("client_secret"))
-			assert.Equal(t, "refresh_token", r.Form.Get("grant_type"))
-			assert.Equal(t, "refresh_tok3n", r.Form.Get("refresh_token"))
-
-			w.Header().Set("Content-Type", "application/json")
-			_, err = w.Write([]byte(`{"access_token":"new_token","token_type":"Bearer","refresh_token":"new_refresh_token","expires_in":3600}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			return
-		}
-		if r.URL.Path == "/measurements" {
-			if r.Method != http.MethodPost {
-				t.Fatalf("expected POST request, got %s", r.Method)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusAccepted)
-			_, err := w.Write([]byte(`{"id":"abcd","probesCount":1}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			return
-		}
-		t.Fatalf("unexpected request to %s", r.URL.Path)
-	}))
-	defer server.Close()
-	client := NewClient(Config{
-		APIURL:           server.URL,
-		AuthURL:          server.URL,
-		AuthClientID:     "<client_id>",
-		AuthClientSecret: "<client_secret>",
-		AuthToken: &Token{
-			AccessToken:  "access_token",
-			RefreshToken: "refresh_tok3n",
-			Expiry:       time.Now().Add(-1 * time.Hour),
-		},
-		OnTokenRefresh: func(_t *Token) {
-			assert.Equal(t, &Token{
-				AccessToken:  "new_token",
-				TokenType:    "Bearer",
-				RefreshToken: "new_refresh_token",
-				ExpiresIn:    3600,
-				Expiry:       now.Add(3600 * time.Second),
-			}, _t)
-		},
-	})
-
-	opts := &MeasurementCreate{}
-	res, err := client.CreateMeasurement(t.Context(), opts)
-	assert.Nil(t, err)
-	assert.Equal(t, "abcd", res.ID)
-}
-
-func Test_CreateMeasurement_Unauthorized_TokenRefreshed(t *testing.T) {
-	now := time.Now()
-	timeNow = func() time.Time {
-		return now
-	}
-	defer func() {
-		timeNow = time.Now
-	}()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/oauth/token" {
-			if r.Method != http.MethodPost {
-				t.Fatalf("expected POST request, got %s", r.Method)
-			}
-			err := r.ParseForm()
-			if err != nil {
-				t.Fatal(err)
-			}
-			assert.Equal(t, "<client_id>", r.Form.Get("client_id"))
-			assert.Equal(t, "<client_secret>", r.Form.Get("client_secret"))
-			assert.Equal(t, "refresh_token", r.Form.Get("grant_type"))
-			assert.Equal(t, "refresh_tok3n", r.Form.Get("refresh_token"))
-
-			w.Header().Set("Content-Type", "application/json")
-			_, err = w.Write([]byte(`{"access_token":"new_token","token_type":"Bearer","refresh_token":"new_refresh_token","expires_in":3600}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			return
-		}
-		if r.URL.Path == "/measurements" {
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
-			return
-		}
-		t.Fatalf("unexpected request to %s", r.URL.Path)
-	}))
-	defer server.Close()
-	client := NewClient(Config{
-		APIURL:           server.URL,
-		AuthURL:          server.URL,
-		AuthClientID:     "<client_id>",
-		AuthClientSecret: "<client_secret>",
-		AuthToken: &Token{
-			AccessToken:  "access_token",
-			RefreshToken: "refresh_tok3n",
-			Expiry:       time.Now().Add(1 * time.Hour),
-		},
-		OnTokenRefresh: func(_t *Token) {
-			assert.Equal(t, &Token{
-				AccessToken:  "new_token",
-				TokenType:    "Bearer",
-				RefreshToken: "new_refresh_token",
-				ExpiresIn:    3600,
-				Expiry:       now.Add(3600 * time.Second),
-			}, _t)
-		},
-	})
-
-	opts := &MeasurementCreate{}
-	res, err := client.CreateMeasurement(t.Context(), opts)
-	assert.Nil(t, res)
-	e, ok := err.(*MeasurementError)
-	assert.True(t, ok)
-	assert.Equal(t, StatusUnauthorizedWithTokenRefreshed, e.Code)
-	assert.Equal(t, "Unauthorized.", e.Message)
-}
-
-func Test_CreateMeasurement_Unauthorized_Token_Not_Refreshed(t *testing.T) {
-	now := time.Now()
-	timeNow = func() time.Time {
-		return now
-	}
-	defer func() {
-		timeNow = time.Now
-	}()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/oauth/token" {
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error": "invalid_grant", "error_description": "Invalid refresh token."}`))
-			return
-		}
-		if r.URL.Path == "/measurements" {
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
-			return
-		}
-		t.Fatalf("unexpected request to %s", r.URL.Path)
-	}))
-	defer server.Close()
-	isOnTokenRefreshCalled := false
-	client := NewClient(Config{
-		APIURL:           server.URL,
-		AuthURL:          server.URL,
-		AuthClientID:     "<client_id>",
-		AuthClientSecret: "<client_secret>",
-		AuthToken: &Token{
-			AccessToken:  "access_token",
-			RefreshToken: "refresh_tok3n",
-			Expiry:       time.Now().Add(1 * time.Hour),
-		},
-		OnTokenRefresh: func(_t *Token) {
-			isOnTokenRefreshCalled = true
-			assert.Nil(t, _t)
-		},
-	})
-
-	opts := &MeasurementCreate{}
-	res, err := client.CreateMeasurement(t.Context(), opts)
-	assert.Nil(t, res)
-	assert.EqualError(t, err, "You have been signed out by the API. Please try signing in again.")
-	assert.True(t, isOnTokenRefreshCalled)
-}
-func Test_CreateMeasurement_Unauthorized_NoRefreshToken(t *testing.T) {
-	now := time.Now()
-	timeNow = func() time.Time {
-		return now
-	}
-	defer func() {
-		timeNow = time.Now
-	}()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
-	}))
-	defer server.Close()
-	client := NewClient(Config{
-		APIURL:           server.URL,
-		AuthURL:          server.URL,
-		AuthClientID:     "<client_id>",
-		AuthClientSecret: "<client_secret>",
-		AuthToken: &Token{
-			AccessToken: "access_token",
-			Expiry:      time.Now().Add(1 * time.Hour),
-		},
-		OnTokenRefresh: func(_t *Token) {
-			t.Fatal("should not be called")
-		},
-	})
-
-	opts := &MeasurementCreate{}
-	res, err := client.CreateMeasurement(t.Context(), opts)
-	assert.Nil(t, res)
-	assert.EqualError(t, err, invalidTokenErr)
-}
-
-func Test_CreateMeasurement_MoreCreditsRequiredNoAuthError(t *testing.T) {
-	rateLimitReset := "61"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-RateLimit-Remaining", "1")
-		w.Header().Set("X-RateLimit-Reset", rateLimitReset)
-		w.Header().Set("X-Credits-Remaining", "1")
-		w.Header().Set("X-Request-Cost", "3")
-		w.WriteHeader(429)
-		_, err := w.Write([]byte(`{
-			"error": {
-			  "message": "API rate limit exceeded.",
-			  "type": "rate_limit_exceeded"
-			}}`))
-		if err != nil {
-			panic(err)
-		}
-	}))
-	defer server.Close()
-
-	client := NewClient(Config{APIURL: server.URL})
-	opts := &MeasurementCreate{}
-	_, err := client.CreateMeasurement(t.Context(), opts)
-	assert.EqualError(t, err, fmt.Sprintf(moreCreditsRequiredNoAuthErr, "2 credits", 3, "1 minute"))
-
-	rateLimitReset = "100"
-	_, err = client.CreateMeasurement(t.Context(), opts)
-	assert.EqualError(t, err, fmt.Sprintf(moreCreditsRequiredNoAuthErr, "2 credits", 3, "2 minutes"))
-}
-
-func Test_CreateMeasurement_MoreCreditsRequiredAuthError(t *testing.T) {
-	rateLimitReset := "40"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-RateLimit-Remaining", "0")
-		w.Header().Set("X-RateLimit-Reset", rateLimitReset)
-		w.Header().Set("X-Credits-Remaining", "1")
-		w.Header().Set("X-Request-Cost", "2")
-		w.WriteHeader(429)
-		_, err := w.Write([]byte(`{
-			"error": {
-			  "message": "API rate limit exceeded.",
-			  "type": "rate_limit_exceeded"
-			}}`))
-		if err != nil {
-			panic(err)
-		}
-	}))
-	defer server.Close()
-
-	client := NewClient(Config{
-		AuthToken: &Token{
-			AccessToken: "secret",
-			Expiry:      time.Now().Add(1 * time.Hour),
-		},
-		APIURL: server.URL,
-	})
-	opts := &MeasurementCreate{}
-
-	_, err := client.CreateMeasurement(t.Context(), opts)
-	assert.EqualError(t, err, fmt.Sprintf(moreCreditsRequiredAuthErr, "1 credit", 2, "40 seconds"))
-
-	rateLimitReset = "1"
-	_, err = client.CreateMeasurement(t.Context(), opts)
-	assert.EqualError(t, err, fmt.Sprintf(moreCreditsRequiredAuthErr, "1 credit", 2, "1 second"))
-}
-
-func Test_CreateMeasurement_NoCreditsNoAuthError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-RateLimit-Remaining", "0")
-		w.Header().Set("X-RateLimit-Reset", "5")
-		w.Header().Set("X-Credits-Remaining", "0")
-		w.WriteHeader(429)
-		_, err := w.Write([]byte(`{
-			"error": {
-			  "message": "API rate limit exceeded.",
-			  "type": "rate_limit_exceeded"
-			}}`))
-		if err != nil {
-			panic(err)
-		}
-	}))
-	defer server.Close()
-
-	client := NewClient(Config{APIURL: server.URL})
-	opts := &MeasurementCreate{}
-	_, err := client.CreateMeasurement(t.Context(), opts)
-
-	assert.EqualError(t, err, fmt.Sprintf(noCreditsNoAuthErr, "5 seconds"))
-}
-
-func Test_CreateMeasurement_NoCreditsAuthError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-RateLimit-Remaining", "0")
-		w.Header().Set("X-RateLimit-Reset", "5")
-		w.Header().Set("X-Credits-Remaining", "0")
-		w.WriteHeader(429)
-		_, err := w.Write([]byte(`{
-			"error": {
-			  "message": "API rate limit exceeded.",
-			  "type": "rate_limit_exceeded"
-			}}`))
-		if err != nil {
-			panic(err)
-		}
-	}))
-	defer server.Close()
-
-	client := NewClient(Config{
-		AuthToken: &Token{
-			AccessToken: "secret",
-			Expiry:      time.Now().Add(1 * time.Hour),
-		},
-		APIURL: server.URL,
-	})
-	opts := &MeasurementCreate{}
-	_, err := client.CreateMeasurement(t.Context(), opts)
-
-	assert.EqualError(t, err, fmt.Sprintf(noCreditsAuthErr, "5 seconds"))
-}
-
-func Test_CreateMeasurement_NoProbes(t *testing.T) {
-	server := generateServer(`{
-    "error": {
-      "message": "No suitable probes found",
-      "type": "no_probes_found"
-    }}`, 422)
-	defer server.Close()
-
-	client := NewClient(Config{APIURL: server.URL})
-	opts := &MeasurementCreate{}
-	_, err := client.CreateMeasurement(t.Context(), opts)
-
 	assert.Equal(t, &MeasurementError{
-		Code:    422,
-		Type:    "no_probes_found",
-		Message: "no suitable probes found - please try a different location",
+		StatusCode: 401,
+		Header: http.Header{
+			"Content-Length": []string{"63"},
+			"Content-Type":   []string{"text/plain; charset=utf-8"},
+			"Date":           []string{defaultDate},
+		},
+		Type:    "unauthorized",
+		Message: "Unauthorized.",
 	}, err)
 }
 
-func Test_CreateMeasurement_Validation(t *testing.T) {
+func Test_CreateMeasurement_ValidationError(t *testing.T) {
 	server := generateServer(`{
     "error": {
         "message": "Validation Failed",
@@ -424,45 +82,26 @@ func Test_CreateMeasurement_Validation(t *testing.T) {
         }
     }}`, 400)
 	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
+
+	client := NewClient(Config{})
 
 	opts := &MeasurementCreate{}
-	_, err := client.CreateMeasurement(t.Context(), opts)
+	res, err := client.CreateMeasurement(t.Context(), opts)
 
+	assert.Nil(t, res)
 	assert.Equal(t, &MeasurementError{
-		Code: 400,
-		Type: "validation_error",
-		Message: `invalid parameters:
- - "target" does not match any of the allowed types`,
-		Params: map[string]interface{}{
+		StatusCode: 400,
+		Header: http.Header{
+			"Content-Length": []string{"195"},
+			"Content-Type":   []string{"text/plain; charset=utf-8"},
+			"Date":           []string{defaultDate},
+		},
+		Type:    "validation_error",
+		Message: "Validation Failed",
+		Params: map[string]any{
 			"target": "\"target\" does not match any of the allowed types",
 		},
 	}, err)
-}
-
-func Test_CreateMeasurement_InternalError(t *testing.T) {
-	server := generateServer(`{
-    "error": {
-      "message": "Internal Server Error",
-      "type": "api_error"
-    }}`, 500)
-	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
-
-	opts := &MeasurementCreate{}
-	_, err := client.CreateMeasurement(t.Context(), opts)
-	assert.EqualError(t, err, "internal server error - please try again later")
-}
-
-func Test_GetMeasurement_Valid(t *testing.T) {
-	server := generateServer(`{"id":"abcd"}`, http.StatusOK)
-	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
-	res, err := client.GetMeasurement(t.Context(), "abcd")
-	if err != nil {
-		t.Error(err)
-	}
-	assert.Equal(t, "abcd", res.ID)
 }
 
 func Test_GetMeasurement_Ping(t *testing.T) {
@@ -509,7 +148,8 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 		}
 	}]}`, http.StatusOK)
 	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
+
+	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
 	if err != nil {
@@ -605,7 +245,7 @@ func Test_GetMeasurement_Traceroute(t *testing.T) {
 	}}]}`, http.StatusOK)
 	defer server.Close()
 
-	client := NewClient(Config{APIURL: server.URL})
+	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
 	if err != nil {
@@ -634,7 +274,7 @@ func Test_GetMeasurement_Traceroute(t *testing.T) {
 	assert.Equal(t, "1.1.1.1", res.Results[0].Result.ResolvedHostname)
 }
 
-func Test_GetMeasurement_Dns(t *testing.T) {
+func Test_GetMeasurement_DNS(t *testing.T) {
 	server := generateServer(`{
 	"id": "abcd",
 	"type": "dns",
@@ -681,7 +321,7 @@ func Test_GetMeasurement_Dns(t *testing.T) {
 		}
 	}]}`, http.StatusOK)
 	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
+	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
 	if err != nil {
@@ -714,7 +354,7 @@ func Test_GetMeasurement_Dns(t *testing.T) {
 	assert.Equal(t, float64(15), timings.Total)
 }
 
-func Test_GetMeasurement_Mtr(t *testing.T) {
+func Test_GetMeasurement_MTR(t *testing.T) {
 	server := generateServer(`{
 	"id": "abcd",
 	"type": "mtr",
@@ -803,7 +443,7 @@ func Test_GetMeasurement_Mtr(t *testing.T) {
 		}
 	}]}`, http.StatusOK)
 	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
+	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
 	if err != nil {
@@ -832,7 +472,7 @@ func Test_GetMeasurement_Mtr(t *testing.T) {
 	assert.IsType(t, json.RawMessage{}, res.Results[0].Result.TimingsRaw)
 }
 
-func Test_GetMeasurement_Http(t *testing.T) {
+func Test_GetMeasurement_HTTP(t *testing.T) {
 	server := generateServer(`{
 	"id": "abcd",
 	"type": "http",
@@ -908,7 +548,7 @@ func Test_GetMeasurement_Http(t *testing.T) {
 		}
 	}]}`, http.StatusOK)
 	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
+	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
 	if err != nil {
@@ -981,9 +621,12 @@ func Test_GetMeasurement_WithEtag(t *testing.T) {
 		err := json.NewEncoder(w).Encode(m)
 		assert.NoError(t, err)
 	}))
+
+	APIURL = s.URL
+
 	defer s.Close()
 
-	client := NewClient(Config{APIURL: s.URL})
+	client := NewClient(Config{})
 
 	// first request for id1
 	m, err := client.GetMeasurement(t.Context(), id1)
@@ -1028,9 +671,12 @@ func Test_GetMeasurement_WithBrotli(t *testing.T) {
 		err := json.NewEncoder(rW).Encode(m)
 		assert.NoError(t, err)
 	}))
+
+	APIURL = s.URL
+
 	defer s.Close()
 
-	client := NewClient(Config{APIURL: s.URL})
+	client := NewClient(Config{})
 
 	m, err := client.GetMeasurement(t.Context(), id)
 	assert.NoError(t, err)
@@ -1041,7 +687,8 @@ func Test_GetMeasurement_WithBrotli(t *testing.T) {
 func Test_GetMeasurementRaw_Json(t *testing.T) {
 	server := generateServer(`{"id":"abcd"}`, http.StatusOK)
 	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
+
+	client := NewClient(Config{})
 	res, err := client.GetMeasurementRaw(t.Context(), "abcd")
 	if err != nil {
 		t.Error(err)
@@ -1066,29 +713,39 @@ func Test_AwaitMeasurement(t *testing.T) {
 		count++
 	}))
 	defer server.Close()
-	client := NewClient(Config{APIURL: server.URL})
+
+	APIURL = server.URL
+
+	client := NewClient(Config{})
+
 	res, err := client.AwaitMeasurement(t.Context(), "abcd")
 	if err != nil {
 		t.Error(err)
 	}
+
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, StatusFinished, res.Status)
 }
 
 func generateServer(json string, statusCode int) *httptest.Server {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Date", defaultDate)
 		w.WriteHeader(statusCode)
 		_, err := w.Write([]byte(json))
 		if err != nil {
 			panic(err)
 		}
 	}))
+
+	APIURL = server.URL
+
 	return server
 }
 
 func generateServerAuthorized(json string) *httptest.Server {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer secret" {
+			w.Header().Set("Date", defaultDate)
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
 			return
@@ -1099,5 +756,8 @@ func generateServerAuthorized(json string) *httptest.Server {
 			panic(err)
 		}
 	}))
+
+	APIURL = server.URL
+
 	return server
 }

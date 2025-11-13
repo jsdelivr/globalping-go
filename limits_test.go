@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -26,6 +25,7 @@ func Test_Limits(t *testing.T) {
 			Remaining: 1000,
 		},
 	}
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/limits" && r.Method == http.MethodGet {
 			assert.Equal(t, "Bearer tok3n", r.Header.Get("Authorization"))
@@ -41,18 +41,12 @@ func Test_Limits(t *testing.T) {
 	}))
 	defer server.Close()
 
+	APIURL = server.URL
+
 	client := NewClient(Config{
-		AuthClientID:     "<client_id>",
-		AuthClientSecret: "<client_secret>",
-		AuthURL:          server.URL,
-		DashboardURL:     server.URL,
-		APIURL:           server.URL,
-		AuthToken: &Token{
-			AccessToken: "tok3n",
-			TokenType:   "Bearer",
-			Expiry:      time.Now().Add(time.Hour),
-		},
+		AuthToken: "tok3n",
 	})
+
 	res, err := client.Limits(t.Context())
 	assert.Nil(t, err)
 	assert.Equal(t, expectedResponse, res)

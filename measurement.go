@@ -4,147 +4,72 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/andybalholm/brotli"
 )
 
-var (
-	moreCreditsRequiredNoAuthErr = "You only have %s remaining, and %d were required. Try requesting fewer probes or wait %s for the rate limit to reset. You can get higher limits by creating an account. Sign up at https://dash.globalping.io?view=add-credits"
-	moreCreditsRequiredAuthErr   = "You only have %s remaining, and %d were required. Try requesting fewer probes or wait %s for the rate limit to reset. You can get higher limits by sponsoring us or hosting probes. Learn more at https://dash.globalping.io?view=add-credits"
-	noCreditsNoAuthErr           = "You have run out of credits for this session. You can wait %s for the rate limit to reset or get higher limits by creating an account. Sign up at https://dash.globalping.io?view=add-credits"
-	noCreditsAuthErr             = "You have run out of credits for this session. You can wait %s for the rate limit to reset or get higher limits by sponsoring us or hosting probes. Learn more at https://dash.globalping.io?view=add-credits"
-	invalidRefreshTokenErr       = "You have been signed out by the API. Please try signing in again."
-	invalidTokenErr              = "Your access token has been rejected by the API. Try signing in with a new token."
-)
-
-var (
-	StatusUnauthorizedWithTokenRefreshed = 1000
-)
-
 func (c *client) CreateMeasurement(ctx context.Context, measurement *MeasurementCreate) (*MeasurementCreateResponse, error) {
-	postData, err := json.Marshal(measurement)
+	data, err := json.Marshal(measurement)
 	if err != nil {
-		return nil, &MeasurementError{Message: "failed to marshal post data - please report this bug"}
+		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.apiURL+"/measurements", bytes.NewBuffer(postData))
+	req, err := http.NewRequestWithContext(ctx, "POST", APIURL+"/measurements", bytes.NewBuffer(data))
 	if err != nil {
-		return nil, &MeasurementError{Message: "failed to create request - please report this bug"}
+		return nil, err
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept-Encoding", "br")
 	req.Header.Set("Content-Type", "application/json")
 
-	token, err := c.getToken(ctx)
+	if c.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
+
+	res, err := c.http.Do(req)
 	if err != nil {
-		return nil, &MeasurementError{Message: "failed to get token: " + err.Error()}
-	}
-	if token != nil {
-		req.Header.Set("Authorization", token.TokenType+" "+token.AccessToken)
-	}
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, &MeasurementError{Message: "request failed - please try again later"}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusAccepted {
-		var data MeasurementErrorResponse
-		err = json.NewDecoder(resp.Body).Decode(&data)
-		if err != nil {
-			return nil, &MeasurementError{Message: "invalid error format returned - please report this bug"}
-		}
-		err := data.Error
-		err.Code = resp.StatusCode
-
-		if resp.StatusCode == http.StatusBadRequest {
-			resErr := ""
-			for _, v := range data.Error.Params {
-				resErr += fmt.Sprintf(" - %s\n", v)
-			}
-			// Remove the last \n
-			if len(resErr) > 0 {
-				resErr = resErr[:len(resErr)-1]
-			}
-			err.Message = fmt.Sprintf("invalid parameters:\n%s", resErr)
-			return nil, err
-		}
-
-		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			if token != nil {
-				if token.RefreshToken == "" {
-					err.Message = invalidTokenErr
-					return nil, err
-				}
-				if c.tryToRefreshToken(ctx, token.RefreshToken) {
-					err.Code = StatusUnauthorizedWithTokenRefreshed
-					return nil, err
-				}
-				err.Message = invalidRefreshTokenErr
-				return nil, err
-			}
-			err.Message = data.Error.Message
-			return nil, err
-		}
-
-		if resp.StatusCode == http.StatusUnprocessableEntity {
-			err.Message = fmt.Sprintf("%s - please try a different location", TextFromSentence(err.Message))
-			return nil, err
-		}
-
-		if resp.StatusCode == http.StatusTooManyRequests {
-			rateLimitRemaining, _ := strconv.ParseInt(resp.Header.Get("X-RateLimit-Remaining"), 10, 64)
-			rateLimitReset, _ := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64)
-			creditsRemaining, _ := strconv.ParseInt(resp.Header.Get("X-Credits-Remaining"), 10, 64)
-			requestCost, _ := strconv.ParseInt(resp.Header.Get("X-Request-Cost"), 10, 64)
-			remaining := rateLimitRemaining + creditsRemaining
-			if token == nil {
-				if remaining > 0 {
-					err.Message = fmt.Sprintf(moreCreditsRequiredNoAuthErr, Pluralize(remaining, "credit"), requestCost, FormatSeconds(rateLimitReset))
-					return nil, err
-				}
-				err.Message = fmt.Sprintf(noCreditsNoAuthErr, FormatSeconds(rateLimitReset))
-				return nil, err
-
-			} else {
-				if remaining > 0 {
-					err.Message = fmt.Sprintf(moreCreditsRequiredAuthErr, Pluralize(remaining, "credit"), requestCost, FormatSeconds(rateLimitReset))
-					return nil, err
-				}
-				err.Message = fmt.Sprintf(noCreditsAuthErr, FormatSeconds(rateLimitReset))
-				return nil, err
-			}
-		}
-
-		if resp.StatusCode == http.StatusInternalServerError {
-			err.Message = "internal server error - please try again later"
-			return nil, err
-		}
-
-		err.Message = fmt.Sprintf("unknown error response: %s", data.Error.Type)
 		return nil, err
 	}
+	defer res.Body.Close()
 
-	var bodyReader io.Reader = resp.Body
-	if resp.Header.Get("Content-Encoding") == "br" {
+	if res.StatusCode != http.StatusAccepted {
+		b, err := io.ReadAll(res.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		resErr := &MeasurementErrorResponse{
+			Error: &MeasurementError{
+				StatusCode: res.StatusCode,
+				Header:     res.Header,
+			},
+		}
+
+		err = json.Unmarshal(b, resErr)
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, resErr.Error
+	}
+
+	var bodyReader io.Reader = res.Body
+	if res.Header.Get("Content-Encoding") == "br" {
 		bodyReader = brotli.NewReader(bodyReader)
 	}
 
-	res := &MeasurementCreateResponse{}
-	err = json.NewDecoder(bodyReader).Decode(res)
+	b, err := io.ReadAll(bodyReader)
 	if err != nil {
-		return nil, &MeasurementError{
-			Message: fmt.Sprintf("invalid post measurement format returned - please report this bug: %s", err),
-		}
+		return nil, err
 	}
 
-	return res, nil
+	result := &MeasurementCreateResponse{}
+	err = json.Unmarshal(b, result)
+
+	return result, nil
 }
 
 func (c *client) GetMeasurement(ctx context.Context, id string) (*Measurement, error) {
@@ -155,9 +80,7 @@ func (c *client) GetMeasurement(ctx context.Context, id string) (*Measurement, e
 	m := &Measurement{}
 	err = json.Unmarshal(respBytes, m)
 	if err != nil {
-		return nil, &MeasurementError{
-			Message: fmt.Sprintf("invalid get measurement format returned: %v %s", err, string(respBytes)),
-		}
+		return nil, err
 	}
 	return m, nil
 }
@@ -167,33 +90,34 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 	if err != nil {
 		return nil, err
 	}
+
 	m := &Measurement{}
 	err = json.Unmarshal(respBytes, m)
 	if err != nil {
-		return nil, &MeasurementError{
-			Message: fmt.Sprintf("invalid get measurement format returned: %v %s", err, string(respBytes)),
-		}
+		return nil, err
 	}
+
 	for m.Status == StatusInProgress {
 		time.Sleep(500 * time.Millisecond)
+
 		respBytes, err := c.GetMeasurementRaw(ctx, id)
 		if err != nil {
 			return nil, err
 		}
+
 		err = json.Unmarshal(respBytes, m)
 		if err != nil {
-			return nil, &MeasurementError{
-				Message: fmt.Sprintf("invalid get measurement format returned: %v %s", err, string(respBytes)),
-			}
+			return nil, err
 		}
 	}
+
 	return m, nil
 }
 
 func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.apiURL+"/measurements/"+id, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", APIURL+"/measurements/"+id, nil)
 	if err != nil {
-		return nil, &MeasurementError{Message: "failed to create request"}
+		return nil, err
 	}
 
 	req.Header.Set("User-Agent", c.userAgent)
@@ -204,53 +128,59 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 		req.Header.Set("If-None-Match", etag)
 	}
 
-	resp, err := c.http.Do(req)
+	res, err := c.http.Do(req)
 	if err != nil {
-		return nil, &MeasurementError{Message: "request failed"}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotModified {
-		err := &MeasurementError{
-			Code: resp.StatusCode,
-		}
-		if resp.StatusCode == http.StatusNotFound {
-			err.Message = "measurement not found"
-			return nil, err
-		}
-
-		if resp.StatusCode == http.StatusInternalServerError {
-			err.Message = "internal server error - please try again later"
-			return nil, err
-		}
-		err.Message = fmt.Sprintf("response code %d", resp.StatusCode)
 		return nil, err
 	}
+	defer res.Body.Close()
 
-	if resp.StatusCode == http.StatusNotModified {
-		respBytes := c.getCachedResponse(id)
-		if respBytes == nil {
-			return nil, &MeasurementError{Message: "response not found in etags cache"}
+	if res.StatusCode == http.StatusNotModified {
+		b := c.getCachedResponse(id)
+		if b == nil {
+			return nil, &MeasurementError{
+				Type:    "unexpected_error",
+				Message: "response not found in etags cache",
+			}
 		}
-		return respBytes, nil
+		return b, nil
 	}
 
-	var bodyReader io.Reader = resp.Body
+	if res.StatusCode != http.StatusOK {
+		b, err := io.ReadAll(res.Body)
+		if err != nil {
+			return nil, err
+		}
 
-	if resp.Header.Get("Content-Encoding") == "br" {
+		resErr := &MeasurementErrorResponse{
+			Error: &MeasurementError{
+				StatusCode: res.StatusCode,
+				Header:     res.Header,
+			},
+		}
+
+		err = json.Unmarshal(b, resErr)
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, resErr.Error
+	}
+
+	var bodyReader io.Reader = res.Body
+
+	if res.Header.Get("Content-Encoding") == "br" {
 		bodyReader = brotli.NewReader(bodyReader)
 	}
 
-	// Read the response body
-	respBytes, err := io.ReadAll(bodyReader)
+	b, err := io.ReadAll(bodyReader)
 	if err != nil {
-		return nil, &MeasurementError{Message: "failed to read response body"}
+		return nil, err
 	}
 
 	// save etag and response to cache
-	c.cacheResponse(id, resp.Header.Get("ETag"), respBytes)
+	c.cacheResponse(id, res.Header.Get("ETag"), b)
 
-	return respBytes, nil
+	return b, nil
 }
 
 func DecodePingTimings(timings json.RawMessage) ([]PingTiming, error) {

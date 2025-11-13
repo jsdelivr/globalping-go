@@ -2,6 +2,8 @@ package globalping
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"time"
 )
 
@@ -67,14 +69,21 @@ type MeasurementCreate struct {
 }
 
 type MeasurementError struct {
-	Code    int            `json:"-"`
-	Message string         `json:"message"`
-	Type    string         `json:"type"`
-	Params  map[string]any `json:"params,omitempty"`
+	StatusCode int            `json:"-"`
+	Header     http.Header    `json:"-"`
+	Type       string         `json:"type"`
+	Message    string         `json:"message"`
+	Params     map[string]any `json:"params,omitempty"`
 }
 
 func (e *MeasurementError) Error() string {
-	return e.Message
+	msg := fmt.Sprintf("%s: %s", e.Type, e.Message)
+
+	for k, v := range e.Params {
+		msg += fmt.Sprintf("\n - %s: %v", k, v)
+	}
+
+	return msg
 }
 
 type MeasurementErrorResponse struct {

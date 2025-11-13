@@ -1,5 +1,10 @@
 package globalping
 
+import (
+	"fmt"
+	"net/http"
+)
+
 // https://globalping.io/docs/api.globalping.io#get-/v1/limits
 
 type LimitsResponse struct {
@@ -34,13 +39,14 @@ type CreditLimits struct {
 }
 
 type LimitsError struct {
-	Code    int    `json:"-"`
-	Type    string `json:"type"`
-	Message string `json:"message"`
+	StatusCode int         `json:"-"`
+	Header     http.Header `json:"-"`
+	Type       string      `json:"type"`
+	Message    string      `json:"message"`
 }
 
 func (e *LimitsError) Error() string {
-	return e.Message
+	return fmt.Sprintf("%s: %s", e.Type, e.Message)
 }
 
 type LimitsErrorResponse struct {

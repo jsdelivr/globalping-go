@@ -7,10 +7,8 @@ import (
 	"time"
 )
 
-const (
-	GlobalpingAPIURL       = "https://api.globalping.io/v1"
-	GlobalpingAuthURL      = "https://auth.globalping.io"
-	GlobalpingDashboardURL = "https://dash.globalping.io"
+var (
+	APIURL = "https://api.globalping.io/v1"
 )
 
 type Client interface {
@@ -34,29 +32,15 @@ type Client interface {
 	// https://globalping.io/docs/api.globalping.io#get-/v1/measurements/-id-
 	GetMeasurementRaw(ctx context.Context, id string) ([]byte, error)
 
-	// Opens and listens on a local port for authorization from Globalping's OAuth2 server.
-	// This is meant to be used to locally authorize the client, e.g. for CLI or other local applications.
-	//
-	// Returns a link to be used for authorization and listens for the authorization callback.
-	//
-	// onTokenRefresh will be called if the authorization is successful.
-	Authorize(ctx context.Context, callback func(error)) (*AuthorizeResponse, error)
-
-	// Returns the introspection response for the token.
-	//
-	// If the token is empty, the client's current token will be used.
-	TokenIntrospection(ctx context.Context, token string) (*IntrospectionResponse, error)
-
-	// Removes the current token from the client. It also revokes the tokens if the refresh token is available.
-	//
-	// onTokenRefresh will be called if the token is successfully removed.
-	Logout(ctx context.Context) error
-
-	// Revokes the token.
-	RevokeToken(ctx context.Context, token string) error
-
 	// Returns the rate limits for the current user or IP address.
+	//
+	// https://globalping.io/docs/api.globalping.io#get-/v1/limits
 	Limits(ctx context.Context) (*LimitsResponse, error)
+
+	// Returns a list of all probes currently online and their metadata, such as location and assigned tags.
+	//
+	// https://globalping.io/docs/api.globalping.io#get-/v1/probes
+	Probes(ctx context.Context) (*ProbesResponse, error)
 
 	// Clears the expired cached entries.
 	CacheClean()
@@ -66,19 +50,11 @@ type Client interface {
 }
 
 type Config struct {
-	HTTPClient *http.Client // If set, this client will be used for API requests and authorization
+	AuthToken          string // Your GlobalPing API access token. Optional.
+	UserAgent          string // User agent string for API requests. Optional.
+	CacheExpireSeconds int64  // Cache entry expiration time in seconds. 0 means no expiration.
 
-	APIURL       string // optional
-	DashboardURL string // optional
-
-	AuthURL          string // optional
-	AuthClientID     string
-	AuthClientSecret string
-	AuthToken        *Token
-	OnTokenRefresh   func(*Token) // Callback function to be called when the token is refreshed or revoked.
-
-	UserAgent          string
-	CacheExpireSeconds int64 // Cache entry expiration time in seconds
+	HTTPClient *http.Client // If set, this client will be used for API requests. Optional.
 }
 
 type client struct {
@@ -86,42 +62,26 @@ type client struct {
 	http  *http.Client
 	cache map[string]*cacheEntry
 
-	authClientID     string
-	authClientSecret string
-	token            *Token
-	onTokenRefresh   func(*Token)
-
-	apiURL             string
-	authURL            string
-	dashboardURL       string
 	cacheExpireSeconds int64
 	userAgent          string
+	authToken          string
 }
 
 // Creates a new client with the given configuration.
-// Note: The client caches API responses. Set CacheExpireSeconds to configure the cache entry expiration time in seconds, 0 means no expiration. Use CacheClean to clear the expired cached entries.
+//
+// Note: The client caches API responses.
+// Set CacheExpireSeconds to configure the entry expiration and use CacheClean to clear the expired entries when reusing the client.
 func NewClient(config Config) Client {
 	c := &client{
 		mu:                 sync.RWMutex{},
-		authClientID:       config.AuthClientID,
-		authClientSecret:   config.AuthClientSecret,
-		onTokenRefresh:     config.OnTokenRefresh,
-		apiURL:             config.APIURL,
-		authURL:            config.AuthURL,
-		dashboardURL:       config.DashboardURL,
 		userAgent:          config.UserAgent,
+		authToken:          config.AuthToken,
 		cache:              map[string]*cacheEntry{},
 		cacheExpireSeconds: config.CacheExpireSeconds,
 	}
 
-	if config.APIURL == "" {
-		c.apiURL = GlobalpingAPIURL
-	}
-	if config.AuthURL == "" {
-		c.authURL = GlobalpingAuthURL
-	}
-	if config.DashboardURL == "" {
-		c.dashboardURL = GlobalpingDashboardURL
+	if config.UserAgent == "" {
+		c.userAgent = "jsdelivr/globalping-go"
 	}
 
 	if config.HTTPClient != nil {
@@ -132,17 +92,5 @@ func NewClient(config Config) Client {
 		}
 	}
 
-	if config.AuthToken != nil {
-		c.token = &Token{
-			AccessToken:  config.AuthToken.AccessToken,
-			TokenType:    config.AuthToken.TokenType,
-			RefreshToken: config.AuthToken.RefreshToken,
-			ExpiresIn:    config.AuthToken.ExpiresIn,
-			Expiry:       config.AuthToken.Expiry,
-		}
-		if c.token.TokenType == "" {
-			c.token.TokenType = "Bearer"
-		}
-	}
 	return c
 }
