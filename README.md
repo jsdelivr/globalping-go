@@ -135,7 +135,7 @@ API errors are returned as `*globalping.MeasurementError` instances. You can acc
 
 `AuthToken`
 
-A user authentication token obtained from https://dash.globalping.io or via OAuth (currently available only to official Globalping apps).
+A user authentication token obtained from [https://dash.globalping.io](https://dash.globalping.io) or via OAuth (currently available only to official Globalping apps).
 
 `UserAgent`
 
