@@ -50,6 +50,40 @@ func Test_CreateMeasurement_Authorized(t *testing.T) {
 	}, res)
 }
 
+func Test_CreateMeasurement_Authorized_SetToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer new_token" {
+			w.Header().Set("Date", defaultDate)
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, err := w.Write([]byte(`{"id":"abcd","probesCount":1}`))
+		if err != nil {
+			panic(err)
+		}
+	}))
+	defer server.Close()
+
+	APIURL = server.URL
+
+	client := NewClient(Config{
+		AuthToken: "secret",
+	})
+
+	client.SetToken("new_token")
+
+	opts := &MeasurementCreate{}
+	res, err := client.CreateMeasurement(t.Context(), opts)
+
+	assert.NoError(t, err)
+	assert.Equal(t, &MeasurementCreateResponse{
+		ID:          "abcd",
+		ProbesCount: 1,
+	}, res)
+}
+
 func Test_CreateMeasurement_AuthorizedError(t *testing.T) {
 	server := generateServerAuthorized(`{"id":"abcd","probesCount":1}`)
 	defer server.Close()

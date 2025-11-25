@@ -25,8 +25,9 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 	req.Header.Set("Accept-Encoding", "br")
 	req.Header.Set("Content-Type", "application/json")
 
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	token := c.authToken.Load()
+	if token != nil {
+		req.Header.Set("Authorization", "Bearer "+*token)
 	}
 
 	res, err := c.http.Do(req)

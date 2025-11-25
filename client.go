@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -47,6 +48,9 @@ type Client interface {
 
 	// Removes all cached entries regardless of expiration.
 	CachePurge()
+
+	// Sets the authentication token for API requests.
+	SetToken(token string)
 }
 
 type Config struct {
@@ -64,7 +68,7 @@ type client struct {
 
 	cacheExpireSeconds int64
 	userAgent          string
-	authToken          string
+	authToken          atomic.Pointer[string]
 }
 
 // Creates a new client with the given configuration.
@@ -75,13 +79,16 @@ func NewClient(config Config) Client {
 	c := &client{
 		mu:                 sync.RWMutex{},
 		userAgent:          config.UserAgent,
-		authToken:          config.AuthToken,
 		cache:              map[string]*cacheEntry{},
 		cacheExpireSeconds: config.CacheExpireSeconds,
 	}
 
 	if config.UserAgent == "" {
 		c.userAgent = "jsdelivr/globalping-go"
+	}
+
+	if config.AuthToken != "" {
+		c.authToken.Store(&config.AuthToken)
 	}
 
 	if config.HTTPClient != nil {
@@ -93,4 +100,12 @@ func NewClient(config Config) Client {
 	}
 
 	return c
+}
+
+func (c *client) SetToken(token string) {
+	if token == "" {
+		c.authToken.Store(nil)
+		return
+	}
+	c.authToken.Store(&token)
 }

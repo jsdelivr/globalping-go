@@ -13,8 +13,9 @@ func (c *client) Probes(ctx context.Context) (*ProbesResponse, error) {
 		return nil, err
 	}
 
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	token := c.authToken.Load()
+	if token != nil {
+		req.Header.Set("Authorization", "Bearer "+*token)
 	}
 
 	res, err := c.http.Do(req)
