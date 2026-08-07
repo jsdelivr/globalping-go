@@ -22,13 +22,6 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 	if hasLocations && hasPreviousMeasurement {
 		return nil, errors.New("Locations and PreviousMeasurement cannot both be set")
 	}
-	if measurement.Limit != 0 {
-		for _, location := range measurement.Locations {
-			if location.Limit != 0 {
-				return nil, errors.New("Limit and Locations[].Limit cannot both be set")
-			}
-		}
-	}
 
 	var data []byte
 	var err error

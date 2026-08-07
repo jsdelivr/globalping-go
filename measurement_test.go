@@ -60,14 +60,6 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 			expected: `{"locations":[{"country":"DE"}],"type":"ping","target":"example.com"}`,
 		},
 		{
-			name: "limit conflict",
-			measurement: &MeasurementCreate{
-				Limit:     2,
-				Locations: []Locations{{Country: "DE", Limit: 1}},
-			},
-			expectedErr: "Limit and Locations[].Limit cannot both be set",
-		},
-		{
 			name: "previous measurement",
 			measurement: &MeasurementCreate{
 				Type:                MeasurementTypePing,
