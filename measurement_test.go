@@ -2,6 +2,7 @@ package globalping
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,20 +43,84 @@ func Test_ProbeResult_FailureSource(t *testing.T) {
 	assert.NotContains(t, string(response), `"failureSource"`)
 }
 
-func Test_CreateMeasurement_Valid(t *testing.T) {
-	server := generateServer(`{"id":"abcd","probesCount":1}`, http.StatusAccepted)
-	defer server.Close()
+func Test_CreateMeasurement_Locations(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		measurement *MeasurementCreate
+		expected    string
+		expectedErr string
+	}{
+		{
+			name: "locations",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: []Locations{{Country: "DE"}},
+			},
+			expected: `{"locations":[{"country":"DE"}],"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "previous measurement",
+			measurement: &MeasurementCreate{
+				Type:                MeasurementTypePing,
+				Target:              "example.com",
+				PreviousMeasurement: "previous-measurement-id",
+			},
+			expected: `{"locations":"previous-measurement-id","type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "omitted",
+			measurement: &MeasurementCreate{
+				Type:   MeasurementTypePing,
+				Target: "example.com",
+			},
+			expected: `{"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "conflict",
+			measurement: &MeasurementCreate{
+				Locations:           []Locations{{Country: "DE"}},
+				PreviousMeasurement: "previous-measurement-id",
+			},
+			expectedErr: "Locations and PreviousMeasurement cannot both be set",
+		},
+		{
+			name:        "nil measurement",
+			expectedErr: "measurement is required",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			requestBody := make(chan []byte, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+				requestBody <- body
+				w.WriteHeader(http.StatusAccepted)
+				_, err = w.Write([]byte(`{"id":"abcd","probesCount":1}`))
+				assert.NoError(t, err)
+			}))
+			defer server.Close()
+			APIURL = server.URL
 
-	client := NewClient(Config{})
+			client := NewClient(Config{})
+			res, err := client.CreateMeasurement(t.Context(), test.measurement)
 
-	opts := &MeasurementCreate{PreviousMeasurement: "previous-measurement-id"}
-	res, err := client.CreateMeasurement(t.Context(), opts)
+			if test.expectedErr != "" {
+				assert.Nil(t, res)
+				assert.EqualError(t, err, test.expectedErr)
+				return
+			}
 
-	assert.NoError(t, err)
-	assert.Equal(t, &MeasurementCreateResponse{
-		ID:          "abcd",
-		ProbesCount: 1,
-	}, res)
+			if !assert.NoError(t, err) {
+				return
+			}
+			assert.Equal(t, &MeasurementCreateResponse{
+				ID:          "abcd",
+				ProbesCount: 1,
+			}, res)
+			assert.JSONEq(t, test.expected, string(<-requestBody))
+		})
+	}
 }
 
 func Test_CreateMeasurement_Authorized(t *testing.T) {
@@ -140,6 +205,9 @@ func Test_CreateMeasurement_ValidationError(t *testing.T) {
         "params": {
 			"target": "\"target\" does not match any of the allowed types"
         }
+	},
+	"links": {
+		"documentation": "https://globalping.io/docs/api.globalping.io#post-/v1/measurements"
     }}`, 400)
 	defer server.Close()
 
@@ -152,7 +220,7 @@ func Test_CreateMeasurement_ValidationError(t *testing.T) {
 	assert.Equal(t, &MeasurementError{
 		StatusCode: 400,
 		Header: http.Header{
-			"Content-Length": []string{"195"},
+			"Content-Length": []string{"299"},
 			"Content-Type":   []string{"text/plain; charset=utf-8"},
 			"Date":           []string{defaultDate},
 		},
@@ -161,7 +229,34 @@ func Test_CreateMeasurement_ValidationError(t *testing.T) {
 		Params: map[string]any{
 			"target": "\"target\" does not match any of the allowed types",
 		},
+		Links: &DocumentationLinks{
+			Documentation: "https://globalping.io/docs/api.globalping.io#post-/v1/measurements",
+		},
 	}, err)
+}
+
+func Test_GetMeasurement_ErrorLinks(t *testing.T) {
+	server := generateServer(`{
+		"error": {
+			"type": "not_found",
+			"message": "Couldn't find the requested item."
+		},
+		"links": {
+			"documentation": "https://globalping.io/docs/api.globalping.io#get-/v1/measurements/-id-"
+		}
+	}`, http.StatusNotFound)
+	defer server.Close()
+
+	client := NewClient(Config{})
+	res, err := client.GetMeasurementRaw(t.Context(), "missing")
+
+	assert.Nil(t, res)
+	var measurementErr *MeasurementError
+	if assert.ErrorAs(t, err, &measurementErr) {
+		assert.Equal(t, &DocumentationLinks{
+			Documentation: "https://globalping.io/docs/api.globalping.io#get-/v1/measurements/-id-",
+		}, measurementErr.Links)
+	}
 }
 
 func Test_GetMeasurement_Ping(t *testing.T) {
