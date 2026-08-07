@@ -69,10 +69,37 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 			expected: `{"locations":"previous-measurement-id","type":"ping","target":"example.com"}`,
 		},
 		{
-			name: "omitted",
+			name: "nil interface",
 			measurement: &MeasurementCreate{
 				Type:   MeasurementTypePing,
 				Target: "example.com",
+			},
+			expected: `{"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "nil location options",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: LocationOptions(nil),
+			},
+			expected: `{"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "empty location options",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: LocationOptions{},
+			},
+			expected: `{"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "empty previous measurement",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: PreviousMeasurementID(""),
 			},
 			expected: `{"type":"ping","target":"example.com"}`,
 		},
@@ -259,7 +286,25 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	"createdAt": "2023-02-17T18:11:52.825Z",
 	"updatedAt": "2023-02-17T18:11:53.969Z",
 	"probesCount": 1,
+	"locations": [{
+		"continent": "EU",
+		"region": "Western Europe",
+		"country": "DE",
+		"state": "HE",
+		"city": "Frankfurt",
+		"asn": 1234,
+		"network": "Example Network",
+		"tags": ["datacenter-network"],
+		"magic": "DE+datacenter",
+		"limit": 1
+	}],
 	"limit": 1,
+	"measurementOptions": {
+		"packets": 3,
+		"protocol": "ICMP",
+		"port": 80,
+		"ipVersion": 4
+	},
 	"results": [
 		{
 		"probe": {
@@ -310,9 +355,27 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	assert.Equal(t, "2023-02-17T18:11:52.825Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-17T18:11:53.969Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
+	assert.Equal(t, []Locations{{
+		Continent: "EU",
+		Region:    "Western Europe",
+		Country:   "DE",
+		State:     "HE",
+		City:      "Frankfurt",
+		ASN:       1234,
+		Network:   "Example Network",
+		Tags:      []string{"datacenter-network"},
+		Magic:     "DE+datacenter",
+		Limit:     1,
+	}}, res.Locations)
 	if assert.NotNil(t, res.Limit) {
 		assert.Equal(t, 1, *res.Limit)
 	}
+	assert.Equal(t, &MeasurementOptions{
+		Protocol:  "ICMP",
+		Port:      80,
+		Packets:   3,
+		IPVersion: IPVersion4,
+	}, res.Options)
 	assert.Equal(t, 1, len(res.Results))
 
 	assert.Equal(t, "NA", res.Results[0].Probe.Continent)
@@ -323,6 +386,9 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	assert.Equal(t, 7794, res.Results[0].Probe.ASN)
 	assert.Equal(t, "Network", res.Results[0].Probe.Network)
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
+	assert.Equal(t, 43.3662, res.Results[0].Probe.Latitude)
+	assert.Equal(t, -80.2222, res.Results[0].Probe.Longitude)
+	assert.Equal(t, []string{"1.1.1.1", "8.8.4.4"}, res.Results[0].Probe.Resolvers)
 
 	assert.Equal(t, "PING", res.Results[0].Result.RawOutput)
 	assert.Equal(t, "1.1.1.1", res.Results[0].Result.ResolvedAddress)
@@ -409,7 +475,9 @@ func Test_GetMeasurement_Traceroute(t *testing.T) {
 	assert.Equal(t, "2023-02-23T07:55:23.414Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T07:55:25.496Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
+	assert.Nil(t, res.Locations)
 	assert.Nil(t, res.Limit)
+	assert.Nil(t, res.Options)
 	assert.Equal(t, 1, len(res.Results))
 
 	assert.Equal(t, "EU", res.Results[0].Probe.Continent)
