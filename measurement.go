@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -12,6 +13,10 @@ import (
 )
 
 func (c *client) CreateMeasurement(ctx context.Context, measurement *MeasurementCreate) (*MeasurementCreateResponse, error) {
+	if measurement == nil {
+		return nil, errors.New("measurement is required")
+	}
+
 	data, err := json.Marshal(measurement)
 	if err != nil {
 		return nil, err
@@ -53,6 +58,13 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		if err != nil {
 			return nil, err
 		}
+		if resErr.Error == nil {
+			resErr.Error = &MeasurementError{
+				StatusCode: res.StatusCode,
+				Header:     res.Header,
+			}
+		}
+		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
 	}
@@ -101,7 +113,7 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 		return nil, err
 	}
 
-	for m.Status == StatusInProgress {
+	for m.Status == MeasurementStatusInProgress {
 		time.Sleep(500 * time.Millisecond)
 
 		respBytes, err := c.GetMeasurementRaw(ctx, id)
@@ -166,6 +178,13 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 		if err != nil {
 			return nil, err
 		}
+		if resErr.Error == nil {
+			resErr.Error = &MeasurementError{
+				StatusCode: res.StatusCode,
+				Header:     res.Header,
+			}
+		}
+		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
 	}

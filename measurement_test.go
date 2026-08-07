@@ -2,6 +2,7 @@ package globalping
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,20 +17,129 @@ const (
 	defaultDate = "Thu, 13 Nov 2025 07:13:37 GMT"
 )
 
-func Test_CreateMeasurement_Valid(t *testing.T) {
-	server := generateServer(`{"id":"abcd","probesCount":1}`, http.StatusAccepted)
-	defer server.Close()
+func Test_ProbeResult_FailureSource(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		response string
+		expected FailureSource
+	}{
+		{name: "target", response: `{"failureSource":"target"}`, expected: FailureSourceTarget},
+		{name: "resolver", response: `{"failureSource":"resolver"}`, expected: FailureSourceResolver},
+		{name: "internal", response: `{"failureSource":"internal"}`, expected: FailureSourceInternal},
+		{name: "omitted", response: `{}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var result ProbeResult
 
-	client := NewClient(Config{})
+			err := json.Unmarshal([]byte(test.response), &result)
 
-	opts := &MeasurementCreate{}
-	res, err := client.CreateMeasurement(t.Context(), opts)
+			assert.NoError(t, err)
+			assert.Equal(t, test.expected, result.FailureSource)
+		})
+	}
 
+	response, err := json.Marshal(ProbeResult{})
 	assert.NoError(t, err)
-	assert.Equal(t, &MeasurementCreateResponse{
-		ID:          "abcd",
-		ProbesCount: 1,
-	}, res)
+	assert.NotContains(t, string(response), `"failureSource"`)
+}
+
+func Test_CreateMeasurement_Locations(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		measurement *MeasurementCreate
+		expected    string
+		expectedErr string
+	}{
+		{
+			name: "locations",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: LocationOptions{{Country: "DE"}},
+			},
+			expected: `{"locations":[{"country":"DE"}],"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "previous measurement",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: PreviousMeasurementID("previous-measurement-id"),
+			},
+			expected: `{"locations":"previous-measurement-id","type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "nil interface",
+			measurement: &MeasurementCreate{
+				Type:   MeasurementTypePing,
+				Target: "example.com",
+			},
+			expected: `{"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "nil location options",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: LocationOptions(nil),
+			},
+			expected: `{"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "empty location options",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: LocationOptions{},
+			},
+			expected: `{"type":"ping","target":"example.com"}`,
+		},
+		{
+			name: "empty previous measurement",
+			measurement: &MeasurementCreate{
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: PreviousMeasurementID(""),
+			},
+			expected: `{"type":"ping","target":"example.com"}`,
+		},
+		{
+			name:        "nil measurement",
+			expectedErr: "measurement is required",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			requestBody := make(chan []byte, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				assert.NoError(t, err)
+				requestBody <- body
+				w.WriteHeader(http.StatusAccepted)
+				_, err = w.Write([]byte(`{"id":"abcd","probesCount":1}`))
+				assert.NoError(t, err)
+			}))
+			defer server.Close()
+			APIURL = server.URL
+
+			client := NewClient(Config{})
+			res, err := client.CreateMeasurement(t.Context(), test.measurement)
+
+			if test.expectedErr != "" {
+				assert.Nil(t, res)
+				assert.EqualError(t, err, test.expectedErr)
+				return
+			}
+
+			if !assert.NoError(t, err) {
+				return
+			}
+			assert.Equal(t, &MeasurementCreateResponse{
+				ID:          "abcd",
+				ProbesCount: 1,
+			}, res)
+			assert.JSONEq(t, test.expected, string(<-requestBody))
+		})
+	}
 }
 
 func Test_CreateMeasurement_Authorized(t *testing.T) {
@@ -40,7 +150,7 @@ func Test_CreateMeasurement_Authorized(t *testing.T) {
 		AuthToken: "secret",
 	})
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{Locations: LocationOptions{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.NoError(t, err)
@@ -74,7 +184,7 @@ func Test_CreateMeasurement_Authorized_SetToken(t *testing.T) {
 
 	client.SetToken("new_token")
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{Locations: LocationOptions{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.NoError(t, err)
@@ -90,7 +200,7 @@ func Test_CreateMeasurement_AuthorizedError(t *testing.T) {
 
 	client := NewClient(Config{})
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{Locations: LocationOptions{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.Nil(t, res)
@@ -114,19 +224,22 @@ func Test_CreateMeasurement_ValidationError(t *testing.T) {
         "params": {
 			"target": "\"target\" does not match any of the allowed types"
         }
+	},
+	"links": {
+		"documentation": "https://globalping.io/docs/api.globalping.io#post-/v1/measurements"
     }}`, 400)
 	defer server.Close()
 
 	client := NewClient(Config{})
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{Locations: LocationOptions{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.Nil(t, res)
 	assert.Equal(t, &MeasurementError{
 		StatusCode: 400,
 		Header: http.Header{
-			"Content-Length": []string{"195"},
+			"Content-Length": []string{"299"},
 			"Content-Type":   []string{"text/plain; charset=utf-8"},
 			"Date":           []string{defaultDate},
 		},
@@ -135,7 +248,34 @@ func Test_CreateMeasurement_ValidationError(t *testing.T) {
 		Params: map[string]any{
 			"target": "\"target\" does not match any of the allowed types",
 		},
+		Links: &DocumentationLinks{
+			Documentation: "https://globalping.io/docs/api.globalping.io#post-/v1/measurements",
+		},
 	}, err)
+}
+
+func Test_GetMeasurement_ErrorLinks(t *testing.T) {
+	server := generateServer(`{
+		"error": {
+			"type": "not_found",
+			"message": "Couldn't find the requested item."
+		},
+		"links": {
+			"documentation": "https://globalping.io/docs/api.globalping.io#get-/v1/measurements/-id-"
+		}
+	}`, http.StatusNotFound)
+	defer server.Close()
+
+	client := NewClient(Config{})
+	res, err := client.GetMeasurementRaw(t.Context(), "missing")
+
+	assert.Nil(t, res)
+	var measurementErr *MeasurementError
+	if assert.ErrorAs(t, err, &measurementErr) {
+		assert.Equal(t, &DocumentationLinks{
+			Documentation: "https://globalping.io/docs/api.globalping.io#get-/v1/measurements/-id-",
+		}, measurementErr.Links)
+	}
 }
 
 func Test_GetMeasurement_Ping(t *testing.T) {
@@ -146,6 +286,25 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	"createdAt": "2023-02-17T18:11:52.825Z",
 	"updatedAt": "2023-02-17T18:11:53.969Z",
 	"probesCount": 1,
+	"locations": [{
+		"continent": "EU",
+		"region": "Western Europe",
+		"country": "DE",
+		"state": "HE",
+		"city": "Frankfurt",
+		"asn": 1234,
+		"network": "Example Network",
+		"tags": ["datacenter-network"],
+		"magic": "DE+datacenter",
+		"limit": 1
+	}],
+	"limit": 1,
+	"measurementOptions": {
+		"packets": 3,
+		"protocol": "ICMP",
+		"port": 80,
+		"ipVersion": 4
+	},
 	"results": [
 		{
 		"probe": {
@@ -192,10 +351,31 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypePing, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-17T18:11:52.825Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-17T18:11:53.969Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
+	assert.Equal(t, []Locations{{
+		Continent: "EU",
+		Region:    "Western Europe",
+		Country:   "DE",
+		State:     "HE",
+		City:      "Frankfurt",
+		ASN:       1234,
+		Network:   "Example Network",
+		Tags:      []string{"datacenter-network"},
+		Magic:     "DE+datacenter",
+		Limit:     1,
+	}}, res.Locations)
+	if assert.NotNil(t, res.Limit) {
+		assert.Equal(t, 1, *res.Limit)
+	}
+	assert.Equal(t, &MeasurementOptions{
+		Protocol:  "ICMP",
+		Port:      80,
+		Packets:   3,
+		IPVersion: IPVersion4,
+	}, res.Options)
 	assert.Equal(t, 1, len(res.Results))
 
 	assert.Equal(t, "NA", res.Results[0].Probe.Continent)
@@ -206,6 +386,9 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	assert.Equal(t, 7794, res.Results[0].Probe.ASN)
 	assert.Equal(t, "Network", res.Results[0].Probe.Network)
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
+	assert.Equal(t, 43.3662, res.Results[0].Probe.Latitude)
+	assert.Equal(t, -80.2222, res.Results[0].Probe.Longitude)
+	assert.Equal(t, []string{"1.1.1.1", "8.8.4.4"}, res.Results[0].Probe.Resolvers)
 
 	assert.Equal(t, "PING", res.Results[0].Result.RawOutput)
 	assert.Equal(t, "1.1.1.1", res.Results[0].Result.ResolvedAddress)
@@ -288,10 +471,13 @@ func Test_GetMeasurement_Traceroute(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypeTraceroute, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-23T07:55:23.414Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T07:55:25.496Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
+	assert.Nil(t, res.Locations)
+	assert.Nil(t, res.Limit)
+	assert.Nil(t, res.Options)
 	assert.Equal(t, 1, len(res.Results))
 
 	assert.Equal(t, "EU", res.Results[0].Probe.Continent)
@@ -364,7 +550,7 @@ func Test_GetMeasurement_DNS(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypeDNS, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-23T08:00:37.431Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T08:00:37.640Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
@@ -380,7 +566,7 @@ func Test_GetMeasurement_DNS(t *testing.T) {
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
 
 	assert.Equal(t, "DNS", res.Results[0].Result.RawOutput)
-	assert.Equal(t, StatusFinished, res.Results[0].Result.Status)
+	assert.Equal(t, TestStatusFinished, res.Results[0].Result.Status)
 	assert.IsType(t, json.RawMessage{}, res.Results[0].Result.TimingsRaw)
 
 	// Test timings
@@ -486,7 +672,7 @@ func Test_GetMeasurement_MTR(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypeMTR, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-23T08:08:25.187Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T08:08:29.829Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
@@ -502,7 +688,7 @@ func Test_GetMeasurement_MTR(t *testing.T) {
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
 
 	assert.Equal(t, "MTR", res.Results[0].Result.RawOutput)
-	assert.Equal(t, StatusFinished, res.Results[0].Result.Status)
+	assert.Equal(t, TestStatusFinished, res.Results[0].Result.Status)
 	assert.IsType(t, json.RawMessage{}, res.Results[0].Result.TimingsRaw)
 }
 
@@ -591,7 +777,7 @@ func Test_GetMeasurement_HTTP(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypeHTTP, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-23T08:16:11.335Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T08:16:12.548Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
@@ -607,7 +793,7 @@ func Test_GetMeasurement_HTTP(t *testing.T) {
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
 
 	assert.Equal(t, "HTTP", res.Results[0].Result.RawOutput)
-	assert.Equal(t, StatusFinished, res.Results[0].Result.Status)
+	assert.Equal(t, TestStatusFinished, res.Results[0].Result.Status)
 	assert.IsType(t, json.RawMessage{}, res.Results[0].Result.TimingsRaw)
 
 	// Test timings
@@ -758,7 +944,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 	}
 
 	assert.Equal(t, "abcd", res.ID)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 }
 
 func generateServer(json string, statusCode int) *httptest.Server {

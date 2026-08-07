@@ -10,8 +10,29 @@ import (
 // https://globalping.io/docs/api.globalping.io#tag--Measurements
 
 type Locations struct {
-	Magic string `json:"magic"`
+	Continent string   `json:"continent,omitempty"`
+	Region    string   `json:"region,omitempty"`
+	Country   string   `json:"country,omitempty"`
+	State     string   `json:"state,omitempty"`
+	City      string   `json:"city,omitempty"`
+	ASN       int      `json:"asn,omitempty"`
+	Network   string   `json:"network,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
+	Magic     string   `json:"magic,omitempty"`
+	Limit     int      `json:"limit,omitempty"`
 }
+
+type LocationSelection interface {
+	isLocationSelection()
+}
+
+type LocationOptions []Locations
+
+func (LocationOptions) isLocationSelection() {}
+
+type PreviousMeasurementID string
+
+func (PreviousMeasurementID) isLocationSelection() {}
 
 type QueryOptions struct {
 	Type string `json:"type,omitempty"`
@@ -60,20 +81,50 @@ const (
 )
 
 type MeasurementCreate struct {
-	Limit             int                 `json:"limit"`
-	Locations         []Locations         `json:"locations"`
+	Limit             int                 `json:"limit,omitempty"`
+	Locations         LocationSelection   `json:"locations,omitempty"`
 	Type              MeasurementType     `json:"type"`
 	Target            string              `json:"target"`
-	InProgressUpdates bool                `json:"inProgressUpdates"`
+	InProgressUpdates bool                `json:"inProgressUpdates,omitempty"`
+	Timeout           int                 `json:"timeout,omitempty"`
 	Options           *MeasurementOptions `json:"measurementOptions,omitempty"`
 }
 
+func (m MeasurementCreate) MarshalJSON() ([]byte, error) {
+	switch locations := m.Locations.(type) {
+	case LocationOptions:
+		if len(locations) == 0 {
+			m.Locations = nil
+		}
+	case *LocationOptions:
+		if locations == nil || len(*locations) == 0 {
+			m.Locations = nil
+		}
+	case PreviousMeasurementID:
+		if locations == "" {
+			m.Locations = nil
+		}
+	case *PreviousMeasurementID:
+		if locations == nil || *locations == "" {
+			m.Locations = nil
+		}
+	}
+
+	type measurementCreateAlias MeasurementCreate
+	return json.Marshal(measurementCreateAlias(m))
+}
+
+type DocumentationLinks struct {
+	Documentation string `json:"documentation"`
+}
+
 type MeasurementError struct {
-	StatusCode int            `json:"-"`
-	Header     http.Header    `json:"-"`
-	Type       string         `json:"type"`
-	Message    string         `json:"message"`
-	Params     map[string]any `json:"params,omitempty"`
+	StatusCode int                 `json:"-"`
+	Header     http.Header         `json:"-"`
+	Type       string              `json:"type"`
+	Message    string              `json:"message"`
+	Params     map[string]any      `json:"params,omitempty"`
+	Links      *DocumentationLinks `json:"-"`
 }
 
 func (e *MeasurementError) Error() string {
@@ -87,7 +138,8 @@ func (e *MeasurementError) Error() string {
 }
 
 type MeasurementErrorResponse struct {
-	Error *MeasurementError `json:"error"`
+	Error *MeasurementError   `json:"error"`
+	Links *DocumentationLinks `json:"links,omitempty"`
 }
 
 type MeasurementCreateResponse struct {
@@ -100,24 +152,43 @@ type ProbeDetails struct {
 	Region    string   `json:"region"`
 	Country   string   `json:"country"`
 	City      string   `json:"city"`
-	State     string   `json:"state,omitempty"`
+	State     string   `json:"state"`
 	ASN       int      `json:"asn"`
-	Network   string   `json:"network,omitempty"`
-	Tags      []string `json:"tags,omitempty"`
+	Network   string   `json:"network"`
+	Latitude  float64  `json:"latitude"`
+	Longitude float64  `json:"longitude"`
+	Tags      []string `json:"tags"`
+	Resolvers []string `json:"resolvers"`
 }
 
 type MeasurementStatus string
 
 const (
-	StatusInProgress MeasurementStatus = "in-progress"
-	StatusFailed     MeasurementStatus = "failed"
-	StatusOffline    MeasurementStatus = "offline"
-	StatusFinished   MeasurementStatus = "finished"
+	MeasurementStatusInProgress MeasurementStatus = "in-progress"
+	MeasurementStatusFinished   MeasurementStatus = "finished"
+)
+
+type TestStatus string
+
+const (
+	TestStatusInProgress TestStatus = "in-progress"
+	TestStatusFailed     TestStatus = "failed"
+	TestStatusOffline    TestStatus = "offline"
+	TestStatusFinished   TestStatus = "finished"
+)
+
+type FailureSource string
+
+const (
+	FailureSourceTarget   FailureSource = "target"
+	FailureSourceResolver FailureSource = "resolver"
+	FailureSourceInternal FailureSource = "internal"
 )
 
 type ProbeResult struct {
-	Status    MeasurementStatus `json:"status"`    // The current measurement status.
-	RawOutput string            `json:"rawOutput"` //  The raw output of the test. Can be presented to users but is not meant to be parsed by clients.
+	Status        TestStatus    `json:"status"`                  // The current test status.
+	FailureSource FailureSource `json:"failureSource,omitempty"` // The most likely source of a failed measurement.
+	RawOutput     string        `json:"rawOutput"`               // The raw output of the test. Can be presented to users but is not meant to be parsed by clients.
 
 	// Common
 	ResolvedAddress  string `json:"resolvedAddress"`  // The resolved IP address of the target
@@ -258,12 +329,16 @@ type HTTPTLSCertificate struct {
 }
 
 type Measurement struct {
-	ID          string             `json:"id"`
-	Type        MeasurementType    `json:"type"`
-	Status      MeasurementStatus  `json:"status"`
-	CreatedAt   string             `json:"createdAt"`
-	UpdatedAt   string             `json:"updatedAt"`
-	Target      string             `json:"target"`
-	ProbesCount int                `json:"probesCount"`
-	Results     []ProbeMeasurement `json:"results"`
+	ID          string              `json:"id"`
+	Type        MeasurementType     `json:"type"`
+	Status      MeasurementStatus   `json:"status"`
+	CreatedAt   string              `json:"createdAt"`
+	UpdatedAt   string              `json:"updatedAt"`
+	Target      string              `json:"target"`
+	ProbesCount int                 `json:"probesCount"`
+	Locations   []Locations         `json:"locations,omitempty"`
+	Limit       *int                `json:"limit,omitempty"`
+	Timeout     int                 `json:"timeout,omitempty"`
+	Options     *MeasurementOptions `json:"measurementOptions,omitempty"`
+	Results     []ProbeMeasurement  `json:"results"`
 }
