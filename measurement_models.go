@@ -90,6 +90,30 @@ type MeasurementCreate struct {
 	Options           *MeasurementOptions `json:"measurementOptions,omitempty"`
 }
 
+func (m MeasurementCreate) MarshalJSON() ([]byte, error) {
+	switch locations := m.Locations.(type) {
+	case LocationOptions:
+		if len(locations) == 0 {
+			m.Locations = nil
+		}
+	case *LocationOptions:
+		if locations == nil || len(*locations) == 0 {
+			m.Locations = nil
+		}
+	case PreviousMeasurementID:
+		if locations == "" {
+			m.Locations = nil
+		}
+	case *PreviousMeasurementID:
+		if locations == nil || *locations == "" {
+			m.Locations = nil
+		}
+	}
+
+	type measurementCreateAlias MeasurementCreate
+	return json.Marshal(measurementCreateAlias(m))
+}
+
 type DocumentationLinks struct {
 	Documentation string `json:"documentation"`
 }
