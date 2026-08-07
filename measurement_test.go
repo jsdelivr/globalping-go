@@ -267,6 +267,7 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	"createdAt": "2023-02-17T18:11:52.825Z",
 	"updatedAt": "2023-02-17T18:11:53.969Z",
 	"probesCount": 1,
+	"limit": 1,
 	"results": [
 		{
 		"probe": {
@@ -317,6 +318,9 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	assert.Equal(t, "2023-02-17T18:11:52.825Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-17T18:11:53.969Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
+	if assert.NotNil(t, res.Limit) {
+		assert.Equal(t, 1, *res.Limit)
+	}
 	assert.Equal(t, 1, len(res.Results))
 
 	assert.Equal(t, "NA", res.Results[0].Probe.Continent)
@@ -413,6 +417,7 @@ func Test_GetMeasurement_Traceroute(t *testing.T) {
 	assert.Equal(t, "2023-02-23T07:55:23.414Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T07:55:25.496Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
+	assert.Nil(t, res.Limit)
 	assert.Equal(t, 1, len(res.Results))
 
 	assert.Equal(t, "EU", res.Results[0].Probe.Continent)

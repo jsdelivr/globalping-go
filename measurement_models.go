@@ -302,7 +302,7 @@ type Measurement struct {
 	Target      string              `json:"target"`
 	ProbesCount int                 `json:"probesCount"`
 	Locations   []Locations         `json:"locations,omitempty"`
-	Limit       int                 `json:"limit,omitempty"`
+	Limit       *int                `json:"limit,omitempty"`
 	Timeout     int                 `json:"timeout,omitempty"`
 	Options     *MeasurementOptions `json:"measurementOptions,omitempty"`
 	Results     []ProbeMeasurement  `json:"results"`
