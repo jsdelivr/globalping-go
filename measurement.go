@@ -77,6 +77,12 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		if err != nil {
 			return nil, err
 		}
+		if resErr.Error == nil {
+			resErr.Error = &MeasurementError{
+				StatusCode: res.StatusCode,
+				Header:     res.Header,
+			}
+		}
 		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
@@ -190,6 +196,12 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 		err = json.Unmarshal(b, resErr)
 		if err != nil {
 			return nil, err
+		}
+		if resErr.Error == nil {
+			resErr.Error = &MeasurementError{
+				StatusCode: res.StatusCode,
+				Header:     res.Header,
+			}
 		}
 		resErr.Error.Links = resErr.Links
 
