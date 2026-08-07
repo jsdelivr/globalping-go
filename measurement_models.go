@@ -22,6 +22,18 @@ type Locations struct {
 	Limit     int      `json:"limit,omitempty"`
 }
 
+type LocationSelection interface {
+	isLocationSelection()
+}
+
+type LocationOptions []Locations
+
+func (LocationOptions) isLocationSelection() {}
+
+type PreviousMeasurementID string
+
+func (PreviousMeasurementID) isLocationSelection() {}
+
 type QueryOptions struct {
 	Type string `json:"type,omitempty"`
 }
@@ -69,14 +81,13 @@ const (
 )
 
 type MeasurementCreate struct {
-	Limit               int                 `json:"limit,omitempty"`
-	Locations           []Locations         `json:"locations,omitempty"`
-	PreviousMeasurement string              `json:"-"`
-	Type                MeasurementType     `json:"type"`
-	Target              string              `json:"target"`
-	InProgressUpdates   bool                `json:"inProgressUpdates,omitempty"`
-	Timeout             int                 `json:"timeout,omitempty"`
-	Options             *MeasurementOptions `json:"measurementOptions,omitempty"`
+	Limit             int                 `json:"limit,omitempty"`
+	Locations         LocationSelection   `json:"locations,omitempty"`
+	Type              MeasurementType     `json:"type"`
+	Target            string              `json:"target"`
+	InProgressUpdates bool                `json:"inProgressUpdates,omitempty"`
+	Timeout           int                 `json:"timeout,omitempty"`
+	Options           *MeasurementOptions `json:"measurementOptions,omitempty"`
 }
 
 type DocumentationLinks struct {

@@ -17,26 +17,7 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		return nil, errors.New("measurement is required")
 	}
 
-	hasLocations := len(measurement.Locations) > 0
-	hasPreviousMeasurement := measurement.PreviousMeasurement != ""
-	if hasLocations && hasPreviousMeasurement {
-		return nil, errors.New("Locations and PreviousMeasurement cannot both be set")
-	}
-
-	var data []byte
-	var err error
-	if hasPreviousMeasurement {
-		type measurementCreateAlias MeasurementCreate
-		data, err = json.Marshal(struct {
-			*measurementCreateAlias
-			Locations string `json:"locations"`
-		}{
-			measurementCreateAlias: (*measurementCreateAlias)(measurement),
-			Locations:              measurement.PreviousMeasurement,
-		})
-	} else {
-		data, err = json.Marshal(measurement)
-	}
+	data, err := json.Marshal(measurement)
 	if err != nil {
 		return nil, err
 	}

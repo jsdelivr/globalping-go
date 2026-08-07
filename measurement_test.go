@@ -55,16 +55,16 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 			measurement: &MeasurementCreate{
 				Type:      MeasurementTypePing,
 				Target:    "example.com",
-				Locations: []Locations{{Country: "DE"}},
+				Locations: LocationOptions{{Country: "DE"}},
 			},
 			expected: `{"locations":[{"country":"DE"}],"type":"ping","target":"example.com"}`,
 		},
 		{
 			name: "previous measurement",
 			measurement: &MeasurementCreate{
-				Type:                MeasurementTypePing,
-				Target:              "example.com",
-				PreviousMeasurement: "previous-measurement-id",
+				Type:      MeasurementTypePing,
+				Target:    "example.com",
+				Locations: PreviousMeasurementID("previous-measurement-id"),
 			},
 			expected: `{"locations":"previous-measurement-id","type":"ping","target":"example.com"}`,
 		},
@@ -75,14 +75,6 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 				Target: "example.com",
 			},
 			expected: `{"type":"ping","target":"example.com"}`,
-		},
-		{
-			name: "conflict",
-			measurement: &MeasurementCreate{
-				Locations:           []Locations{{Country: "DE"}},
-				PreviousMeasurement: "previous-measurement-id",
-			},
-			expectedErr: "Locations and PreviousMeasurement cannot both be set",
 		},
 		{
 			name:        "nil measurement",
@@ -131,7 +123,7 @@ func Test_CreateMeasurement_Authorized(t *testing.T) {
 		AuthToken: "secret",
 	})
 
-	opts := &MeasurementCreate{Locations: []Locations{{Magic: "world"}}}
+	opts := &MeasurementCreate{Locations: LocationOptions{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.NoError(t, err)
@@ -165,7 +157,7 @@ func Test_CreateMeasurement_Authorized_SetToken(t *testing.T) {
 
 	client.SetToken("new_token")
 
-	opts := &MeasurementCreate{Locations: []Locations{{Magic: "world"}}}
+	opts := &MeasurementCreate{Locations: LocationOptions{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.NoError(t, err)
@@ -181,7 +173,7 @@ func Test_CreateMeasurement_AuthorizedError(t *testing.T) {
 
 	client := NewClient(Config{})
 
-	opts := &MeasurementCreate{Locations: []Locations{{Magic: "world"}}}
+	opts := &MeasurementCreate{Locations: LocationOptions{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.Nil(t, res)
@@ -213,7 +205,7 @@ func Test_CreateMeasurement_ValidationError(t *testing.T) {
 
 	client := NewClient(Config{})
 
-	opts := &MeasurementCreate{Locations: []Locations{{Magic: "world"}}}
+	opts := &MeasurementCreate{Locations: LocationOptions{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.Nil(t, res)

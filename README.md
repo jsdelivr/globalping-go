@@ -33,7 +33,7 @@ Creates a new measurement with the set parameters. The measurement runs asynchro
     Type:   globalping.MeasurementTypePing,
     Target: "google.com",
     Limit:  1,
-    Locations: []globalping.Locations{
+    Locations: globalping.LocationOptions{
       {
         Magic: "world",
       },
