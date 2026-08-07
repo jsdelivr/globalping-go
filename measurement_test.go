@@ -16,13 +16,39 @@ const (
 	defaultDate = "Thu, 13 Nov 2025 07:13:37 GMT"
 )
 
+func Test_ProbeResult_FailureSource(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		response string
+		expected FailureSource
+	}{
+		{name: "target", response: `{"failureSource":"target"}`, expected: FailureSourceTarget},
+		{name: "resolver", response: `{"failureSource":"resolver"}`, expected: FailureSourceResolver},
+		{name: "internal", response: `{"failureSource":"internal"}`, expected: FailureSourceInternal},
+		{name: "omitted", response: `{}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var result ProbeResult
+
+			err := json.Unmarshal([]byte(test.response), &result)
+
+			assert.NoError(t, err)
+			assert.Equal(t, test.expected, result.FailureSource)
+		})
+	}
+
+	response, err := json.Marshal(ProbeResult{})
+	assert.NoError(t, err)
+	assert.NotContains(t, string(response), `"failureSource"`)
+}
+
 func Test_CreateMeasurement_Valid(t *testing.T) {
 	server := generateServer(`{"id":"abcd","probesCount":1}`, http.StatusAccepted)
 	defer server.Close()
 
 	client := NewClient(Config{})
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{PreviousMeasurement: "previous-measurement-id"}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.NoError(t, err)
@@ -40,7 +66,7 @@ func Test_CreateMeasurement_Authorized(t *testing.T) {
 		AuthToken: "secret",
 	})
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{Locations: []Locations{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.NoError(t, err)
@@ -74,7 +100,7 @@ func Test_CreateMeasurement_Authorized_SetToken(t *testing.T) {
 
 	client.SetToken("new_token")
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{Locations: []Locations{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.NoError(t, err)
@@ -90,7 +116,7 @@ func Test_CreateMeasurement_AuthorizedError(t *testing.T) {
 
 	client := NewClient(Config{})
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{Locations: []Locations{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.Nil(t, res)
@@ -119,7 +145,7 @@ func Test_CreateMeasurement_ValidationError(t *testing.T) {
 
 	client := NewClient(Config{})
 
-	opts := &MeasurementCreate{}
+	opts := &MeasurementCreate{Locations: []Locations{{Magic: "world"}}}
 	res, err := client.CreateMeasurement(t.Context(), opts)
 
 	assert.Nil(t, res)
@@ -192,7 +218,7 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypePing, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-17T18:11:52.825Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-17T18:11:53.969Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
@@ -288,7 +314,7 @@ func Test_GetMeasurement_Traceroute(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypeTraceroute, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-23T07:55:23.414Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T07:55:25.496Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
@@ -364,7 +390,7 @@ func Test_GetMeasurement_DNS(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypeDNS, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-23T08:00:37.431Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T08:00:37.640Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
@@ -380,7 +406,7 @@ func Test_GetMeasurement_DNS(t *testing.T) {
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
 
 	assert.Equal(t, "DNS", res.Results[0].Result.RawOutput)
-	assert.Equal(t, StatusFinished, res.Results[0].Result.Status)
+	assert.Equal(t, TestStatusFinished, res.Results[0].Result.Status)
 	assert.IsType(t, json.RawMessage{}, res.Results[0].Result.TimingsRaw)
 
 	// Test timings
@@ -486,7 +512,7 @@ func Test_GetMeasurement_MTR(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypeMTR, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-23T08:08:25.187Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T08:08:29.829Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
@@ -502,7 +528,7 @@ func Test_GetMeasurement_MTR(t *testing.T) {
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
 
 	assert.Equal(t, "MTR", res.Results[0].Result.RawOutput)
-	assert.Equal(t, StatusFinished, res.Results[0].Result.Status)
+	assert.Equal(t, TestStatusFinished, res.Results[0].Result.Status)
 	assert.IsType(t, json.RawMessage{}, res.Results[0].Result.TimingsRaw)
 }
 
@@ -591,7 +617,7 @@ func Test_GetMeasurement_HTTP(t *testing.T) {
 
 	assert.Equal(t, "abcd", res.ID)
 	assert.Equal(t, MeasurementTypeHTTP, res.Type)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 	assert.Equal(t, "2023-02-23T08:16:11.335Z", res.CreatedAt)
 	assert.Equal(t, "2023-02-23T08:16:12.548Z", res.UpdatedAt)
 	assert.Equal(t, 1, res.ProbesCount)
@@ -607,7 +633,7 @@ func Test_GetMeasurement_HTTP(t *testing.T) {
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
 
 	assert.Equal(t, "HTTP", res.Results[0].Result.RawOutput)
-	assert.Equal(t, StatusFinished, res.Results[0].Result.Status)
+	assert.Equal(t, TestStatusFinished, res.Results[0].Result.Status)
 	assert.IsType(t, json.RawMessage{}, res.Results[0].Result.TimingsRaw)
 
 	// Test timings
@@ -758,7 +784,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 	}
 
 	assert.Equal(t, "abcd", res.ID)
-	assert.Equal(t, StatusFinished, res.Status)
+	assert.Equal(t, MeasurementStatusFinished, res.Status)
 }
 
 func generateServer(json string, statusCode int) *httptest.Server {

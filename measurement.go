@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -12,7 +13,30 @@ import (
 )
 
 func (c *client) CreateMeasurement(ctx context.Context, measurement *MeasurementCreate) (*MeasurementCreateResponse, error) {
-	data, err := json.Marshal(measurement)
+	if measurement == nil {
+		return nil, errors.New("measurement is required")
+	}
+
+	hasLocations := len(measurement.Locations) > 0
+	hasPreviousMeasurement := measurement.PreviousMeasurement != ""
+	if hasLocations && hasPreviousMeasurement {
+		return nil, errors.New("Locations and PreviousMeasurement cannot both be set")
+	}
+
+	var data []byte
+	var err error
+	if hasPreviousMeasurement {
+		type measurementCreateAlias MeasurementCreate
+		data, err = json.Marshal(struct {
+			*measurementCreateAlias
+			Locations string `json:"locations"`
+		}{
+			measurementCreateAlias: (*measurementCreateAlias)(measurement),
+			Locations:              measurement.PreviousMeasurement,
+		})
+	} else {
+		data, err = json.Marshal(measurement)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +77,7 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		if err != nil {
 			return nil, err
 		}
+		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
 	}
@@ -101,7 +126,7 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 		return nil, err
 	}
 
-	for m.Status == StatusInProgress {
+	for m.Status == MeasurementStatusInProgress {
 		time.Sleep(500 * time.Millisecond)
 
 		respBytes, err := c.GetMeasurementRaw(ctx, id)
@@ -166,6 +191,7 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 		if err != nil {
 			return nil, err
 		}
+		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
 	}
