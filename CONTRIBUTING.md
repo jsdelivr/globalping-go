@@ -10,6 +10,8 @@ Hi! We're really excited that you're interested in contributing! Before submitti
 
 ## Project setup
 
+The client remains build-compatible with Go 1.24. Repository tests and lint use the preferred toolchain declared in `go.mod`, which Go selects automatically when needed.
+
 Install golangci-lint:
 
 ```shell

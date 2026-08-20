@@ -18,7 +18,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.24"
+          go-version: "1.26"
           cache: true
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ["1.24"]
+        go: ["1.26"]
         os: [ubuntu-latest]
     name: "Test"
     steps:
@@ -42,3 +42,18 @@ jobs:
           cache: true
       - name: Run tests
         run: go test ./... -v -race -timeout 30s
+
+  compatibility:
+    name: Go 1.24 production build
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.24"
+          cache: true
+      - name: Build
+        run: go build ./...

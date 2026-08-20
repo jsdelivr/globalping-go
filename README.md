@@ -64,6 +64,9 @@ Returns the current state of the measurement.
 ### Await a measurement
 
 Similar to GetMeasurement(), but keeps polling the API until the measurement is finished, and returns its final state.
+The client-side wait limit is derived from the first response: 45 seconds if it omits `timeout`,
+otherwise its timeout plus 10 seconds. Elapsed time includes the initial request.
+If the measurement is still in progress after elapsed time exceeds the limit, AwaitMeasurement() returns a locally generated timeout error.
 
 ```go
   measurement, err := client.AwaitMeasurement(ctx, res.ID)

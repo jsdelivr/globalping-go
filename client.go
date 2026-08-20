@@ -24,6 +24,10 @@ type Client interface {
 	GetMeasurement(ctx context.Context, id string) (*Measurement, error)
 
 	// Waits for the measurement to complete and returns the results.
+	// The client-side wait limit is derived from the first response: 45 seconds if it omits timeout,
+	// otherwise its timeout plus 10 seconds. Elapsed time includes the initial request.
+	// If the measurement is still in progress after elapsed time exceeds the limit,
+	// AwaitMeasurement returns a locally generated timeout error.
 	//
 	// https://globalping.io/docs/api.globalping.io#get-/v1/measurements/-id-
 	AwaitMeasurement(ctx context.Context, id string) (*Measurement, error)

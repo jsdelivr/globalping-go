@@ -1,12 +1,15 @@
 package globalping
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/andybalholm/brotli"
 
@@ -935,37 +938,165 @@ func Test_GetMeasurementRaw_Json(t *testing.T) {
 }
 
 func Test_AwaitMeasurement(t *testing.T) {
-	count := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		var err error
+	const (
+		measurementID             = "abcd"
+		inProgressResponse        = `{"id":"abcd", "status":"in-progress"}`
+		inProgressTimeoutResponse = `{"id":"abcd", "status":"in-progress", "timeout":5}`
+		inProgressLaterTimeout    = `{"id":"abcd", "status":"in-progress", "timeout":30}`
+		finishedResponse          = `{"id":"abcd", "status":"finished"}`
+		finishedTimeoutResponse   = `{"id":"abcd", "status":"finished", "timeout":5}`
+		timeoutError              = "timed out waiting for measurement abcd to finish"
+	)
 
-		if count == 3 {
-			_, err = w.Write([]byte(`{"id":"abcd", "status": "finished"}`))
-		} else {
-			_, err = w.Write([]byte(`{"id":"abcd", "status": "in-progress"}`))
+	t.Run("calculates the timeout from the first response", func(t *testing.T) {
+		for _, test := range []struct {
+			name          string
+			firstResponse string
+			timeout       time.Duration
+		}{
+			{
+				name:          "uses 45 seconds when timeout is omitted",
+				firstResponse: inProgressResponse,
+				timeout:       awaitMeasurementDefaultTimeout,
+			},
+			{
+				name:          "adds 10 seconds and ignores a later timeout",
+				firstResponse: inProgressTimeoutResponse,
+				timeout:       5*time.Second + awaitMeasurementTimeoutBuffer,
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					requestCount := 0
+					transport := roundTripFunc(func(_ *http.Request) string {
+						requestCount++
+
+						if requestCount == 1 {
+							return test.firstResponse
+						}
+
+						return inProgressLaterTimeout
+					})
+					client := NewClient(Config{HTTPClient: &http.Client{Transport: transport, Timeout: 30 * time.Second}})
+					start := time.Now()
+
+					res, err := client.AwaitMeasurement(context.Background(), measurementID)
+
+					assert.Nil(t, res)
+					assert.EqualError(t, err, timeoutError)
+					assert.Equal(t, test.timeout+measurementPollInterval, time.Since(start))
+					assert.Equal(t, int(test.timeout/measurementPollInterval)+2, requestCount)
+				})
+			})
 		}
+	})
 
-		if err != nil {
-			panic(err)
+	t.Run("allows a completed response at exactly the timeout limit", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			requestCount := 0
+			requestAtLimit := int(awaitMeasurementDefaultTimeout/measurementPollInterval) + 1
+			transport := roundTripFunc(func(_ *http.Request) string {
+				requestCount++
+
+				if requestCount == requestAtLimit {
+					return finishedResponse
+				}
+
+				return inProgressResponse
+			})
+			client := NewClient(Config{HTTPClient: &http.Client{Transport: transport, Timeout: 30 * time.Second}})
+			start := time.Now()
+
+			res, err := client.AwaitMeasurement(context.Background(), measurementID)
+
+			if assert.NoError(t, err) && assert.NotNil(t, res) {
+				assert.Equal(t, MeasurementStatusFinished, res.Status)
+			}
+
+			assert.Equal(t, awaitMeasurementDefaultTimeout, time.Since(start))
+			assert.Equal(t, requestAtLimit, requestCount)
+		})
+	})
+
+	t.Run("counts the initial request time before checking completion", func(t *testing.T) {
+		initialRequestDuration := 5*time.Second + awaitMeasurementTimeoutBuffer + time.Nanosecond
+
+		for _, test := range []struct {
+			name     string
+			response string
+			finished bool
+		}{
+			{
+				name:     "times out an in-progress response",
+				response: inProgressTimeoutResponse,
+			},
+			{
+				name:     "returns a finished response beyond the limit",
+				response: finishedTimeoutResponse,
+				finished: true,
+			},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					requestCount := 0
+					transport := roundTripFunc(func(_ *http.Request) string {
+						requestCount++
+						time.Sleep(initialRequestDuration)
+
+						return test.response
+					})
+					client := NewClient(Config{HTTPClient: &http.Client{Transport: transport, Timeout: 30 * time.Second}})
+					start := time.Now()
+
+					res, err := client.AwaitMeasurement(context.Background(), measurementID)
+
+					if test.finished {
+						if assert.NoError(t, err) && assert.NotNil(t, res) {
+							assert.Equal(t, measurementID, res.ID)
+							assert.Equal(t, MeasurementStatusFinished, res.Status)
+						}
+					} else {
+						assert.Nil(t, res)
+						assert.EqualError(t, err, timeoutError)
+					}
+
+					assert.Equal(t, initialRequestDuration, time.Since(start))
+					assert.Equal(t, 1, requestCount)
+				})
+			})
 		}
+	})
 
-		count++
-	}))
-	defer server.Close()
+	t.Run("honors context cancellation while waiting to poll", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			requestCount := 0
+			transport := roundTripFunc(func(_ *http.Request) string {
+				requestCount++
 
-	APIURL = server.URL
+				return inProgressResponse
+			})
+			client := NewClient(Config{HTTPClient: &http.Client{Transport: transport, Timeout: 30 * time.Second}})
+			ctx, cancel := context.WithCancel(context.Background())
+			time.AfterFunc(measurementPollInterval/2, cancel)
+			start := time.Now()
 
-	client := NewClient(Config{})
+			res, err := client.AwaitMeasurement(ctx, measurementID)
 
-	res, err := client.AwaitMeasurement(t.Context(), "abcd")
+			assert.Nil(t, res)
+			assert.ErrorIs(t, err, context.Canceled)
+			assert.Equal(t, measurementPollInterval/2, time.Since(start))
+			assert.Equal(t, 1, requestCount)
+		})
+	})
+}
 
-	if err != nil {
-		t.Error(err)
-	}
+type roundTripFunc func(*http.Request) string
 
-	assert.Equal(t, "abcd", res.ID)
-	assert.Equal(t, MeasurementStatusFinished, res.Status)
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(f(request))),
+	}, nil
 }
 
 func generateServer(json string, statusCode int) *httptest.Server {
