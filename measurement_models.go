@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -111,6 +112,7 @@ func (m MeasurementCreate) MarshalJSON() ([]byte, error) {
 	}
 
 	type measurementCreateAlias MeasurementCreate
+
 	return json.Marshal(measurementCreateAlias(m))
 }
 
@@ -128,13 +130,15 @@ type MeasurementError struct {
 }
 
 func (e *MeasurementError) Error() string {
-	msg := fmt.Sprintf("%s: %s", e.Type, e.Message)
+	var message strings.Builder
+
+	_, _ = fmt.Fprintf(&message, "%s: %s", e.Type, e.Message)
 
 	for k, v := range e.Params {
-		msg += fmt.Sprintf("\n - %s: %v", k, v)
+		_, _ = fmt.Fprintf(&message, "\n - %s: %v", k, v)
 	}
 
-	return msg
+	return message.String()
 }
 
 type MeasurementErrorResponse struct {

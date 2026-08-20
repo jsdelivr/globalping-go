@@ -1,0 +1,37 @@
+# Contributing guide
+
+Hi! We're really excited that you're interested in contributing! Before submitting your contribution, please read through the following guide.
+
+## General guidelines
+
+- Bug fixes and changes discussed in the existing issues are always welcome.
+- For new ideas, please open an issue to discuss them before sending a PR.
+- Make sure your PR passes `bin/golangci-lint run` and `go test ./...`, and has [appropriate commit messages](https://github.com/jsdelivr/globalping-go/commits/master).
+
+## Project setup
+
+Install golangci-lint:
+
+```shell
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b bin v2.12.2
+```
+
+Enable the pre-commit hook, which runs golangci-lint before each commit:
+
+```shell
+git config core.hooksPath .githooks
+```
+
+Run golangci-lint:
+
+```shell
+bin/golangci-lint run
+```
+
+### Testing
+
+Run tests:
+
+```shell
+go test ./...
+```

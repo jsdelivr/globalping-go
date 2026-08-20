@@ -15,43 +15,56 @@ func (c *client) CacheClean() {
 func (c *client) CachePurge() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.cache = map[string]*cacheEntry{}
 }
 
 func (c *client) getETag(id string) string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
 	e, ok := c.cache[id]
+
 	if !ok {
 		return ""
 	}
+
 	if e.ExpireAt > 0 && e.ExpireAt < time.Now().Unix() {
 		return ""
 	}
+
 	return e.ETag
 }
 
 func (c *client) getCachedResponse(id string) []byte {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+
 	e, ok := c.cache[id]
+
 	if !ok {
 		return nil
 	}
+
 	if e.ExpireAt > 0 && e.ExpireAt < time.Now().Unix() {
 		return nil
 	}
+
 	return e.Data
 }
 
 func (c *client) cacheResponse(id string, etag string, resp []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	var expires int64
+
 	if c.cacheExpireSeconds != 0 {
 		expires = time.Now().Unix() + c.cacheExpireSeconds
 	}
+
 	e, ok := c.cache[id]
+
 	if ok {
 		e.ETag = etag
 		e.Data = resp
@@ -68,7 +81,9 @@ func (c *client) cacheResponse(id string, etag string, resp []byte) {
 func (c *client) cleanupCache() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	now := time.Now().Unix()
+
 	for k, v := range c.cache {
 		if v.ExpireAt > 0 && v.ExpireAt < now {
 			delete(c.cache, k)

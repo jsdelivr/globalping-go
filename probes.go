@@ -8,24 +8,31 @@ import (
 )
 
 func (c *client) Probes(ctx context.Context) (*ProbesResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", APIURL+"/probes", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, APIURL+"/probes", nil)
+
 	if err != nil {
 		return nil, err
 	}
 
 	token := c.authToken.Load()
+
 	if token != nil {
 		req.Header.Set("Authorization", "Bearer "+*token)
 	}
 
 	res, err := c.http.Do(req)
+
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+
+	defer func() {
+		_ = res.Body.Close()
+	}()
 
 	if res.StatusCode != http.StatusOK {
 		b, err := io.ReadAll(res.Body)
+
 		if err != nil {
 			return nil, err
 		}
@@ -38,19 +45,23 @@ func (c *client) Probes(ctx context.Context) (*ProbesResponse, error) {
 		}
 
 		err = json.Unmarshal(b, resErr)
+
 		if err != nil {
 			return nil, err
 		}
+
 		return nil, resErr.Error
 	}
 
 	b, err := io.ReadAll(res.Body)
+
 	if err != nil {
 		return nil, err
 	}
 
 	probes := &ProbesResponse{}
 	err = json.Unmarshal(b, probes)
+
 	if err != nil {
 		return nil, err
 	}

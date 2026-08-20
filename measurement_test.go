@@ -127,12 +127,14 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 			if test.expectedErr != "" {
 				assert.Nil(t, res)
 				assert.EqualError(t, err, test.expectedErr)
+
 				return
 			}
 
 			if !assert.NoError(t, err) {
 				return
 			}
+
 			assert.Equal(t, &MeasurementCreateResponse{
 				ID:          "abcd",
 				ProbesCount: 1,
@@ -165,11 +167,14 @@ func Test_CreateMeasurement_Authorized_SetToken(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer new_token" {
 			w.Header().Set("Date", defaultDate)
 			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
+			_, _ = w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
+
 			return
 		}
+
 		w.WriteHeader(http.StatusAccepted)
 		_, err := w.Write([]byte(`{"id":"abcd","probesCount":1}`))
+
 		if err != nil {
 			panic(err)
 		}
@@ -271,6 +276,7 @@ func Test_GetMeasurement_ErrorLinks(t *testing.T) {
 
 	assert.Nil(t, res)
 	var measurementErr *MeasurementError
+
 	if assert.ErrorAs(t, err, &measurementErr) {
 		assert.Equal(t, &DocumentationLinks{
 			Documentation: "https://globalping.io/docs/api.globalping.io#get-/v1/measurements/-id-",
@@ -345,6 +351,7 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
+
 	if err != nil {
 		t.Error(err)
 	}
@@ -367,9 +374,11 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 		Magic:     "DE+datacenter",
 		Limit:     1,
 	}}, res.Locations)
+
 	if assert.NotNil(t, res.Limit) {
 		assert.Equal(t, 1, *res.Limit)
 	}
+
 	assert.Equal(t, &MeasurementOptions{
 		Protocol:  "ICMP",
 		Port:      80,
@@ -465,6 +474,7 @@ func Test_GetMeasurement_Traceroute(t *testing.T) {
 	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
+
 	if err != nil {
 		t.Error(err)
 	}
@@ -544,6 +554,7 @@ func Test_GetMeasurement_DNS(t *testing.T) {
 	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
+
 	if err != nil {
 		t.Error(err)
 	}
@@ -666,6 +677,7 @@ func Test_GetMeasurement_MTR(t *testing.T) {
 	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
+
 	if err != nil {
 		t.Error(err)
 	}
@@ -771,6 +783,7 @@ func Test_GetMeasurement_HTTP(t *testing.T) {
 	client := NewClient(Config{})
 
 	res, err := client.GetMeasurement(t.Context(), "abcd")
+
 	if err != nil {
 		t.Error(err)
 	}
@@ -886,7 +899,10 @@ func Test_GetMeasurement_WithBrotli(t *testing.T) {
 		w.Header().Set("Content-Encoding", "br")
 
 		rW := brotli.NewWriter(w)
-		defer rW.Close()
+
+		defer func() {
+			_ = rW.Close()
+		}()
 
 		err := json.NewEncoder(rW).Encode(m)
 		assert.NoError(t, err)
@@ -910,6 +926,7 @@ func Test_GetMeasurementRaw_Json(t *testing.T) {
 
 	client := NewClient(Config{})
 	res, err := client.GetMeasurementRaw(t.Context(), "abcd")
+
 	if err != nil {
 		t.Error(err)
 	}
@@ -919,17 +936,20 @@ func Test_GetMeasurementRaw_Json(t *testing.T) {
 
 func Test_AwaitMeasurement(t *testing.T) {
 	count := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		var err error
+
 		if count == 3 {
 			_, err = w.Write([]byte(`{"id":"abcd", "status": "finished"}`))
 		} else {
 			_, err = w.Write([]byte(`{"id":"abcd", "status": "in-progress"}`))
 		}
+
 		if err != nil {
 			panic(err)
 		}
+
 		count++
 	}))
 	defer server.Close()
@@ -939,6 +959,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 	client := NewClient(Config{})
 
 	res, err := client.AwaitMeasurement(t.Context(), "abcd")
+
 	if err != nil {
 		t.Error(err)
 	}
@@ -948,10 +969,11 @@ func Test_AwaitMeasurement(t *testing.T) {
 }
 
 func generateServer(json string, statusCode int) *httptest.Server {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Date", defaultDate)
 		w.WriteHeader(statusCode)
 		_, err := w.Write([]byte(json))
+
 		if err != nil {
 			panic(err)
 		}
@@ -967,11 +989,14 @@ func generateServerAuthorized(json string) *httptest.Server {
 		if r.Header.Get("Authorization") != "Bearer secret" {
 			w.Header().Set("Date", defaultDate)
 			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
+			_, _ = w.Write([]byte(`{"error": {"type": "unauthorized", "message": "Unauthorized."}}`))
+
 			return
 		}
+
 		w.WriteHeader(http.StatusAccepted)
 		_, err := w.Write([]byte(json))
+
 		if err != nil {
 			panic(err)
 		}

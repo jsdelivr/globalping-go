@@ -105,7 +105,9 @@ func NewClient(config Config) Client {
 func (c *client) SetToken(token string) {
 	if token == "" {
 		c.authToken.Store(nil)
+
 		return
 	}
+
 	c.authToken.Store(&token)
 }
