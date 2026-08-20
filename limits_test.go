@@ -32,11 +32,14 @@ func Test_Limits(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			b, _ := json.Marshal(expectedResponse)
 			_, err := w.Write(b)
+
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			return
 		}
+
 		t.Fatalf("unexpected request to %s", r.URL.Path)
 	}))
 	defer server.Close()

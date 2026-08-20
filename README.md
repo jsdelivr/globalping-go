@@ -148,3 +148,7 @@ Specifies the expiration time for cached measurements in seconds. 0 means no exp
 `HTTPClient`
 
 Custom HTTP client to use for requests.
+
+## Development
+
+Please refer to [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
