@@ -5,11 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/andybalholm/brotli"
+)
+
+const (
+	awaitMeasurementDefaultTimeout = 45 * time.Second
+	awaitMeasurementTimeoutBuffer  = 10 * time.Second
+	measurementPollInterval        = 500 * time.Millisecond
 )
 
 func (c *client) CreateMeasurement(ctx context.Context, measurement *MeasurementCreate) (*MeasurementCreateResponse, error) {
@@ -121,6 +128,8 @@ func (c *client) GetMeasurement(ctx context.Context, id string) (*Measurement, e
 }
 
 func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement, error) {
+	start := time.Now()
+
 	respBytes, err := c.GetMeasurementRaw(ctx, id)
 
 	if err != nil {
@@ -134,8 +143,22 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 		return nil, err
 	}
 
+	maxDuration := awaitMeasurementDefaultTimeout
+
+	if m.Timeout != 0 {
+		maxDuration = time.Duration(m.Timeout)*time.Second + awaitMeasurementTimeoutBuffer
+	}
+
 	for m.Status == MeasurementStatusInProgress {
-		time.Sleep(500 * time.Millisecond)
+		if time.Since(start) > maxDuration {
+			return nil, fmt.Errorf("timed out waiting for measurement %s to finish", id)
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(measurementPollInterval):
+		}
 
 		respBytes, err := c.GetMeasurementRaw(ctx, id)
 

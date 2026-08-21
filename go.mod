@@ -2,6 +2,8 @@ module github.com/jsdelivr/globalping-go
 
 go 1.24.0
 
+toolchain go1.26.7
+
 require (
 	github.com/andybalholm/brotli v1.2.0
 	github.com/stretchr/testify v1.11.1
