@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test code
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+
+  release:
+    name: Release new version
+    if: github.ref == 'refs/heads/master' && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    needs: test
+    environment: release
+
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Release
+        uses: cycjimmy/semantic-release-action@v6
+        with:
+          semantic_version: 24.2.9
+          extra_plugins: |
+            conventional-changelog-conventionalcommits@9.3.1
+            @semantic-release/exec@7.1.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
