@@ -34,21 +34,19 @@ func (c *client) Probes(ctx context.Context) (*ProbesResponse, error) {
 		b, err := io.ReadAll(res.Body)
 
 		if err != nil {
-			return nil, err
+			return nil, newHTTPErrorWithCause(res.StatusCode, res.Header, err)
 		}
 
-		resErr := &ProbesErrorResponse{
-			Error: &ProbesError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			},
-		}
+		resErr := &ProbesErrorResponse{}
 
 		err = json.Unmarshal(b, resErr)
 
-		if err != nil {
-			return nil, err
+		if err != nil || resErr.Error == nil {
+			return nil, newHTTPError(res.StatusCode, res.Header)
 		}
+
+		resErr.Error.StatusCode = res.StatusCode
+		resErr.Error.Header = res.Header
 
 		return nil, resErr.Error
 	}

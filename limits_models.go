@@ -49,6 +49,14 @@ func (e *LimitsError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Type, e.Message)
 }
 
+func (e *LimitsError) Unwrap() error {
+	if e.StatusCode == 0 {
+		return nil
+	}
+
+	return newHTTPError(e.StatusCode, e.Header)
+}
+
 type LimitsErrorResponse struct {
 	Error *LimitsError `json:"error"`
 }

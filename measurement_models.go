@@ -141,6 +141,14 @@ func (e *MeasurementError) Error() string {
 	return message.String()
 }
 
+func (e *MeasurementError) Unwrap() error {
+	if e.StatusCode == 0 {
+		return nil
+	}
+
+	return newHTTPError(e.StatusCode, e.Header)
+}
+
 type MeasurementErrorResponse struct {
 	Error *MeasurementError   `json:"error"`
 	Links *DocumentationLinks `json:"links,omitempty"`
