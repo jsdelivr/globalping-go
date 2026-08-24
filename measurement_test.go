@@ -17,8 +17,13 @@ import (
 )
 
 const (
-	defaultDate = "Thu, 13 Nov 2025 07:13:37 GMT"
+	defaultDate   = "Thu, 13 Nov 2025 07:13:37 GMT"
+	testUserAgent = "globalping-go-test/1.0"
 )
+
+func pointerTo[T any](value T) *T {
+	return &value
+}
 
 func Test_ProbeResult_FailureSource(t *testing.T) {
 	for _, test := range []struct {
@@ -44,6 +49,103 @@ func Test_ProbeResult_FailureSource(t *testing.T) {
 	response, err := json.Marshal(ProbeResult{})
 	assert.NoError(t, err)
 	assert.NotContains(t, string(response), `"failureSource"`)
+}
+
+func Test_NullableMeasurementFields(t *testing.T) {
+	type nullableFields struct {
+		Probe       ProbeDetails       `json:"probe"`
+		Result      ProbeResult        `json:"result"`
+		PingStats   PingStats          `json:"pingStats"`
+		MTRStats    MTRStats           `json:"mtrStats"`
+		HTTPTimings HTTPTimings        `json:"httpTimings"`
+		TLS         HTTPTLSCertificate `json:"tls"`
+		PingTiming  PingTiming         `json:"pingTiming"`
+	}
+
+	for _, test := range []struct {
+		name     string
+		response string
+		expected nullableFields
+	}{
+		{
+			name: "null",
+			response: `{
+				"probe":{"state":null},
+				"result":{"resolvedAddress":null,"resolvedHostname":null,"rawBody":null},
+				"pingStats":{"min":null,"avg":null,"max":null},
+				"mtrStats":{"min":null,"avg":null,"max":null,"stDev":null,"jMin":null,"jAvg":null,"jMax":null},
+				"httpTimings":{"total":null,"dns":null,"tcp":null,"tls":null,"firstByte":null,"download":null},
+				"tls":{"keyType":null,"keyBits":null,"publicKey":null},
+				"pingTiming":{"ttl":null}
+			}`,
+		},
+		{
+			name:     "omitted",
+			response: `{}`,
+		},
+		{
+			name: "zero and empty",
+			response: `{
+				"probe":{"state":""},
+				"result":{"resolvedAddress":"","resolvedHostname":"","rawBody":""},
+				"pingStats":{"min":0,"avg":0,"max":0},
+				"mtrStats":{"min":0,"avg":0,"max":0,"stDev":0,"jMin":0,"jAvg":0,"jMax":0},
+				"httpTimings":{"total":0,"dns":0,"tcp":0,"tls":0,"firstByte":0,"download":0},
+				"tls":{"keyType":"","keyBits":0,"publicKey":""},
+				"pingTiming":{"ttl":0}
+			}`,
+			expected: nullableFields{
+				Probe: ProbeDetails{State: pointerTo("")},
+				Result: ProbeResult{
+					ResolvedAddress:  pointerTo(""),
+					ResolvedHostname: pointerTo(""),
+					RawBody:          pointerTo(""),
+				},
+				PingStats: PingStats{Min: pointerTo(0.0), Avg: pointerTo(0.0), Max: pointerTo(0.0)},
+				MTRStats: MTRStats{
+					Min: pointerTo(0.0), Avg: pointerTo(0.0), Max: pointerTo(0.0), StDev: pointerTo(0.0),
+					JMin: pointerTo(0.0), JAvg: pointerTo(0.0), JMax: pointerTo(0.0),
+				},
+				HTTPTimings: HTTPTimings{
+					Total: pointerTo(0), DNS: pointerTo(0), TCP: pointerTo(0), TLS: pointerTo(0),
+					FirstByte: pointerTo(0), Download: pointerTo(0),
+				},
+				TLS: HTTPTLSCertificate{
+					KeyType: pointerTo(""), KeyBits: pointerTo(0), PublicKey: pointerTo(""),
+				},
+				PingTiming: PingTiming{TTL: pointerTo(0)},
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var fields nullableFields
+
+			err := json.Unmarshal([]byte(test.response), &fields)
+
+			assert.NoError(t, err)
+			assert.Equal(t, test.expected, fields)
+		})
+	}
+}
+
+func Test_DecodePingTimings_TCPWithoutTTL(t *testing.T) {
+	timings, err := DecodePingTimings(json.RawMessage(`[{"rtt":1.25}]`))
+
+	assert.NoError(t, err)
+	assert.Equal(t, []PingTiming{{RTT: 1.25}}, timings)
+}
+
+func Test_DecodeHTTPHeaders(t *testing.T) {
+	headers, err := DecodeHTTPHeaders(json.RawMessage(`{
+		"server":"nginx",
+		"set-cookie":["first=value","second=value"]
+	}`))
+
+	assert.NoError(t, err)
+	assert.Equal(t, map[string][]string{
+		"server":     {"nginx"},
+		"set-cookie": {"first=value", "second=value"},
+	}, headers)
 }
 
 func Test_CreateMeasurement_Locations(t *testing.T) {
@@ -114,6 +216,7 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			requestBody := make(chan []byte, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
 				body, err := io.ReadAll(r.Body)
 				assert.NoError(t, err)
 				requestBody <- body
@@ -124,7 +227,7 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 			defer server.Close()
 			APIURL = server.URL
 
-			client := NewClient(Config{})
+			client := NewClient(Config{UserAgent: testUserAgent})
 			res, err := client.CreateMeasurement(t.Context(), test.measurement)
 
 			if test.expectedErr != "" {
@@ -393,7 +496,7 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	assert.Equal(t, "NA", res.Results[0].Probe.Continent)
 	assert.Equal(t, "Northern America", res.Results[0].Probe.Region)
 	assert.Equal(t, "CA", res.Results[0].Probe.Country)
-	assert.Equal(t, "", res.Results[0].Probe.State)
+	assert.Nil(t, res.Results[0].Probe.State)
 	assert.Equal(t, "City", res.Results[0].Probe.City)
 	assert.Equal(t, 7794, res.Results[0].Probe.ASN)
 	assert.Equal(t, "Network", res.Results[0].Probe.Network)
@@ -403,12 +506,12 @@ func Test_GetMeasurement_Ping(t *testing.T) {
 	assert.Equal(t, []string{"1.1.1.1", "8.8.4.4"}, res.Results[0].Probe.Resolvers)
 
 	assert.Equal(t, "PING", res.Results[0].Result.RawOutput)
-	assert.Equal(t, "1.1.1.1", res.Results[0].Result.ResolvedAddress)
+	assert.Equal(t, pointerTo("1.1.1.1"), res.Results[0].Result.ResolvedAddress)
 	stats, err := DecodePingStats(res.Results[0].Result.StatsRaw)
 	assert.NoError(t, err)
-	assert.Equal(t, float64(27.088), stats.Avg)
-	assert.Equal(t, float64(28.193), stats.Max)
-	assert.Equal(t, float64(24.891), stats.Min)
+	assert.Equal(t, pointerTo(27.088), stats.Avg)
+	assert.Equal(t, pointerTo(28.193), stats.Max)
+	assert.Equal(t, pointerTo(24.891), stats.Min)
 	assert.Equal(t, 3, stats.Total)
 	assert.Equal(t, 3, stats.Rcv)
 	assert.Equal(t, 0, stats.Drop)
@@ -496,15 +599,15 @@ func Test_GetMeasurement_Traceroute(t *testing.T) {
 	assert.Equal(t, "EU", res.Results[0].Probe.Continent)
 	assert.Equal(t, "Northern Europe", res.Results[0].Probe.Region)
 	assert.Equal(t, "GB", res.Results[0].Probe.Country)
-	assert.Equal(t, "", res.Results[0].Probe.State)
+	assert.Nil(t, res.Results[0].Probe.State)
 	assert.Equal(t, "London", res.Results[0].Probe.City)
 	assert.Equal(t, 16276, res.Results[0].Probe.ASN)
 	assert.Equal(t, "OVH SAS", res.Results[0].Probe.Network)
 	assert.Equal(t, 0, len(res.Results[0].Probe.Tags))
 
 	assert.Equal(t, "TRACEROUTE", res.Results[0].Result.RawOutput)
-	assert.Equal(t, "1.1.1.1", res.Results[0].Result.ResolvedAddress)
-	assert.Equal(t, "1.1.1.1", res.Results[0].Result.ResolvedHostname)
+	assert.Equal(t, pointerTo("1.1.1.1"), res.Results[0].Result.ResolvedAddress)
+	assert.Equal(t, pointerTo("1.1.1.1"), res.Results[0].Result.ResolvedHostname)
 }
 
 func Test_GetMeasurement_DNS(t *testing.T) {
@@ -573,7 +676,7 @@ func Test_GetMeasurement_DNS(t *testing.T) {
 	assert.Equal(t, "EU", res.Results[0].Probe.Continent)
 	assert.Equal(t, "Western Europe", res.Results[0].Probe.Region)
 	assert.Equal(t, "NL", res.Results[0].Probe.Country)
-	assert.Equal(t, "", res.Results[0].Probe.State)
+	assert.Nil(t, res.Results[0].Probe.State)
 	assert.Equal(t, "Amsterdam", res.Results[0].Probe.City)
 	assert.Equal(t, 60404, res.Results[0].Probe.ASN)
 	assert.Equal(t, "Liteserver", res.Results[0].Probe.Network)
@@ -696,7 +799,7 @@ func Test_GetMeasurement_MTR(t *testing.T) {
 	assert.Equal(t, "EU", res.Results[0].Probe.Continent)
 	assert.Equal(t, "Western Europe", res.Results[0].Probe.Region)
 	assert.Equal(t, "NL", res.Results[0].Probe.Country)
-	assert.Equal(t, "", res.Results[0].Probe.State)
+	assert.Nil(t, res.Results[0].Probe.State)
 	assert.Equal(t, "Amsterdam", res.Results[0].Probe.City)
 	assert.Equal(t, 54825, res.Results[0].Probe.ASN)
 	assert.Equal(t, "Packet Host, Inc.", res.Results[0].Probe.Network)
@@ -802,7 +905,7 @@ func Test_GetMeasurement_HTTP(t *testing.T) {
 	assert.Equal(t, "NA", res.Results[0].Probe.Continent)
 	assert.Equal(t, "Northern America", res.Results[0].Probe.Region)
 	assert.Equal(t, "CA", res.Results[0].Probe.Country)
-	assert.Equal(t, "", res.Results[0].Probe.State)
+	assert.Nil(t, res.Results[0].Probe.State)
 	assert.Equal(t, "Pembroke", res.Results[0].Probe.City)
 	assert.Equal(t, 577, res.Results[0].Probe.ASN)
 	assert.Equal(t, "Bell Canada", res.Results[0].Probe.Network)
@@ -814,12 +917,12 @@ func Test_GetMeasurement_HTTP(t *testing.T) {
 
 	// Test timings
 	timings, _ := DecodeHTTPTimings(res.Results[0].Result.TimingsRaw)
-	assert.Equal(t, 583, timings.Total)
-	assert.Equal(t, 18, timings.Download)
-	assert.Equal(t, 450, timings.FirstByte)
-	assert.Equal(t, 24, timings.DNS)
-	assert.Equal(t, 70, timings.TLS)
-	assert.Equal(t, 19, timings.TCP)
+	assert.Equal(t, pointerTo(583), timings.Total)
+	assert.Equal(t, pointerTo(18), timings.Download)
+	assert.Equal(t, pointerTo(450), timings.FirstByte)
+	assert.Equal(t, pointerTo(24), timings.DNS)
+	assert.Equal(t, pointerTo(70), timings.TLS)
+	assert.Equal(t, pointerTo(19), timings.TCP)
 }
 
 func Test_GetMeasurement_WithEtag(t *testing.T) {
@@ -893,6 +996,8 @@ func Test_GetMeasurement_WithBrotli(t *testing.T) {
 		parts := strings.Split(r.URL.Path, "/")
 		id := parts[len(parts)-1]
 
+		assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
+		assert.Equal(t, "Bearer secret", r.Header.Get("Authorization"))
 		assert.Equal(t, "br", r.Header.Get("Accept-Encoding"))
 
 		m := &Measurement{
@@ -915,7 +1020,10 @@ func Test_GetMeasurement_WithBrotli(t *testing.T) {
 
 	defer s.Close()
 
-	client := NewClient(Config{})
+	client := NewClient(Config{
+		AuthToken: "secret",
+		UserAgent: testUserAgent,
+	})
 
 	m, err := client.GetMeasurement(t.Context(), id)
 	assert.NoError(t, err)
@@ -945,7 +1053,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 		inProgressLaterTimeout    = `{"id":"abcd", "status":"in-progress", "timeout":30}`
 		finishedResponse          = `{"id":"abcd", "status":"finished"}`
 		finishedTimeoutResponse   = `{"id":"abcd", "status":"finished", "timeout":5}`
-		timeoutError              = "timed out waiting for measurement abcd to finish"
+		timeoutError              = "timed out waiting for measurement abcd to finish: context deadline exceeded"
 	)
 
 	t.Run("calculates the timeout from the first response", func(t *testing.T) {
@@ -984,6 +1092,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 
 					assert.Nil(t, res)
 					assert.EqualError(t, err, timeoutError)
+					assert.ErrorIs(t, err, context.DeadlineExceeded)
 					assert.Equal(t, test.timeout+measurementPollInterval, time.Since(start))
 					assert.Equal(t, int(test.timeout/measurementPollInterval)+2, requestCount)
 				})
@@ -1058,6 +1167,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 					} else {
 						assert.Nil(t, res)
 						assert.EqualError(t, err, timeoutError)
+						assert.ErrorIs(t, err, context.DeadlineExceeded)
 					}
 
 					assert.Equal(t, initialRequestDuration, time.Since(start))
@@ -1084,6 +1194,28 @@ func Test_AwaitMeasurement(t *testing.T) {
 
 			assert.Nil(t, res)
 			assert.ErrorIs(t, err, context.Canceled)
+			assert.Equal(t, measurementPollInterval/2, time.Since(start))
+			assert.Equal(t, 1, requestCount)
+		})
+	})
+
+	t.Run("honors an earlier caller deadline while waiting to poll", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			requestCount := 0
+			transport := roundTripFunc(func(_ *http.Request) string {
+				requestCount++
+
+				return inProgressTimeoutResponse
+			})
+			client := NewClient(Config{HTTPClient: &http.Client{Transport: transport, Timeout: 30 * time.Second}})
+			ctx, cancel := context.WithTimeout(context.Background(), measurementPollInterval/2)
+			defer cancel()
+			start := time.Now()
+
+			res, err := client.AwaitMeasurement(ctx, measurementID)
+
+			assert.Nil(t, res)
+			assert.ErrorIs(t, err, context.DeadlineExceeded)
 			assert.Equal(t, measurementPollInterval/2, time.Since(start))
 			assert.Equal(t, 1, requestCount)
 		})

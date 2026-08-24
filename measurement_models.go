@@ -164,7 +164,7 @@ type ProbeDetails struct {
 	Region    string   `json:"region"`
 	Country   string   `json:"country"`
 	City      string   `json:"city"`
-	State     string   `json:"state"`
+	State     *string  `json:"state"`
 	ASN       int      `json:"asn"`
 	Network   string   `json:"network"`
 	Latitude  float64  `json:"latitude"`
@@ -203,8 +203,8 @@ type ProbeResult struct {
 	RawOutput     string        `json:"rawOutput"`               // The raw output of the test. Can be presented to users but is not meant to be parsed by clients.
 
 	// Common
-	ResolvedAddress  string `json:"resolvedAddress"`  // The resolved IP address of the target
-	ResolvedHostname string `json:"resolvedHostname"` // The resolved hostname of the target
+	ResolvedAddress  *string `json:"resolvedAddress"`  // The resolved IP address of the target
+	ResolvedHostname *string `json:"resolvedHostname"` // The resolved hostname of the target
 
 	// Ping
 	StatsRaw json.RawMessage `json:"stats,omitempty"` // Summary rtt and packet loss statistics. All times are in milliseconds.
@@ -217,7 +217,7 @@ type ProbeResult struct {
 
 	// HTTP
 	RawHeaders string              `json:"rawHeaders"`        // The raw HTTP response headers.
-	RawBody    string              `json:"rawBody"`           // The raw HTTP response body or null if there was no body in response. Note that only the first 10 kb are returned.
+	RawBody    *string             `json:"rawBody"`           // The raw HTTP response body or null if there was no body in response. Note that only the first 10 kb are returned.
 	Truncated  bool                `json:"truncated"`         // Indicates whether the rawBody value was truncated due to being too big.
 	HeadersRaw json.RawMessage     `json:"headers,omitempty"` // The HTTP response headers.
 	TLS        *HTTPTLSCertificate `json:"tls,omitempty"`     // Information about the TLS certificate or null if no TLS certificate is available.
@@ -228,19 +228,19 @@ type ProbeResult struct {
 }
 
 type PingStats struct {
-	Min   float64 `json:"min"`   // The lowest rtt value.
-	Avg   float64 `json:"avg"`   // The average rtt value.
-	Max   float64 `json:"max"`   // The highest rtt value.
-	Total int     `json:"total"` // The number of sent packets.
-	Rcv   int     `json:"rcv"`   // The number of received packets.
-	Drop  int     `json:"drop"`  // The number of dropped packets (total - rcv).
-	Loss  float64 `json:"loss"`  // The percentage of dropped packets.
-	Mdev  float64 `json:"mdev"`  // The mean deviation of the rtt values.
+	Min   *float64 `json:"min"`   // The lowest rtt value.
+	Avg   *float64 `json:"avg"`   // The average rtt value.
+	Max   *float64 `json:"max"`   // The highest rtt value.
+	Total int      `json:"total"` // The number of sent packets.
+	Rcv   int      `json:"rcv"`   // The number of received packets.
+	Drop  int      `json:"drop"`  // The number of dropped packets (total - rcv).
+	Loss  float64  `json:"loss"`  // The percentage of dropped packets.
+	Mdev  float64  `json:"mdev"`  // The mean deviation of the rtt values.
 }
 
 type PingTiming struct {
 	RTT float64 `json:"rtt"` // The round-trip time for this packet.
-	TTL int     `json:"ttl"` // The packet time-to-live value.
+	TTL *int    `json:"ttl"` // The packet time-to-live value.
 }
 
 type TracerouteTiming struct {
@@ -272,17 +272,17 @@ type TraceDNSHop struct {
 }
 
 type MTRStats struct {
-	Min   float64 `json:"min"`   // The lowest rtt value.
-	Avg   float64 `json:"avg"`   // The average rtt value.
-	Max   float64 `json:"max"`   // The highest rtt value.
-	StDev float64 `json:"stDev"` // The standard deviation of the rtt values.
+	Min   *float64 `json:"min"`   // The lowest rtt value.
+	Avg   *float64 `json:"avg"`   // The average rtt value.
+	Max   *float64 `json:"max"`   // The highest rtt value.
+	StDev *float64 `json:"stDev"` // The standard deviation of the rtt values.
 
-	JMin  float64 `json:"jMin"`  // The lowest jitter value.
-	JAvg  float64 `json:"jAvg"`  // The average jitter value.
-	JMax  float64 `json:"jMax"`  // The highest jitter value.
-	Total int     `json:"total"` // The number of sent packets.
-	Rcv   int     `json:"rcv"`   // The number of received packets.
-	Drop  int     `json:"drop"`  // The number of dropped packets (total - rcv).
+	JMin  *float64 `json:"jMin"`  // The lowest jitter value.
+	JAvg  *float64 `json:"jAvg"`  // The average jitter value.
+	JMax  *float64 `json:"jMax"`  // The highest jitter value.
+	Total int      `json:"total"` // The number of sent packets.
+	Rcv   int      `json:"rcv"`   // The number of received packets.
+	Drop  int      `json:"drop"`  // The number of dropped packets (total - rcv).
 
 	Loss float64 `json:"loss"` // The percentage of dropped packets.
 }
@@ -300,12 +300,12 @@ type MTRHop struct {
 }
 
 type HTTPTimings struct {
-	Total     int `json:"total"`     // The total HTTP request time
-	DNS       int `json:"dns"`       // The time required to perform the DNS lookup.
-	TCP       int `json:"tcp"`       // The time from performing the DNS lookup to establishing the TCP connection.
-	TLS       int `json:"tls"`       // The time from establishing the TCP connection to establishing the TLS session.
-	FirstByte int `json:"firstByte"` // The time from establishing the TCP/TLS connection to the first response byte.
-	Download  int `json:"download"`  // The time from the first byte to downloading the whole response.
+	Total     *int `json:"total"`     // The total HTTP request time
+	DNS       *int `json:"dns"`       // The time required to perform the DNS lookup.
+	TCP       *int `json:"tcp"`       // The time from performing the DNS lookup to establishing the TCP connection.
+	TLS       *int `json:"tls"`       // The time from establishing the TCP connection to establishing the TLS session.
+	FirstByte *int `json:"firstByte"` // The time from establishing the TCP/TLS connection to the first response byte.
+	Download  *int `json:"download"`  // The time from the first byte to downloading the whole response.
 }
 
 type ProbeMeasurement struct {
@@ -333,11 +333,11 @@ type HTTPTLSCertificate struct {
 	ExpiresAt      time.Time             `json:"expiresAt"`      // The expiration date and time of the certificate
 	Subject        TLSCertificateSubject `json:"subject"`        // Information about the certificate subject.
 	Issuer         TLSCertificateIssuer  `json:"issuer"`         // Information about the certificate issuer.
-	KeyType        string                `json:"keyType"`        // The type of the used key, or null for unrecognized types.
-	KeyBits        int                   `json:"keyBits"`        // The size of the used key, or null for unrecognized types.
+	KeyType        *string               `json:"keyType"`        // The type of the used key, or null for unrecognized types.
+	KeyBits        *int                  `json:"keyBits"`        // The size of the used key, or null for unrecognized types.
 	SerialNumber   string                `json:"serialNumber"`   // The certificate serial number as a : separated HEX string
 	Fingerprint256 string                `json:"fingerprint256"` // The SHA-256 digest of the DER-encoded certificate as a : separated HEX string
-	PublicKey      string                `json:"publicKey"`      // The public key as a : separated HEX string, or null for unrecognized types.
+	PublicKey      *string               `json:"publicKey"`      // The public key as a : separated HEX string, or null for unrecognized types.
 }
 
 type Measurement struct {

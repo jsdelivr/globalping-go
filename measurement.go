@@ -31,21 +31,14 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, APIURL+"/measurements", bytes.NewBuffer(data))
+	req, err := c.newRequest(ctx, http.MethodPost, APIURL+"/measurements", bytes.NewBuffer(data))
 
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept-Encoding", "br")
 	req.Header.Set("Content-Type", "application/json")
-
-	token := c.authToken.Load()
-
-	if token != nil {
-		req.Header.Set("Authorization", "Bearer "+*token)
-	}
 
 	res, err := c.http.Do(req)
 
@@ -142,7 +135,7 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 
 	for m.Status == MeasurementStatusInProgress {
 		if time.Since(start) > maxDuration {
-			return nil, fmt.Errorf("timed out waiting for measurement %s to finish", id)
+			return nil, fmt.Errorf("timed out waiting for measurement %s to finish: %w", id, context.DeadlineExceeded)
 		}
 
 		select {
@@ -168,13 +161,12 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 }
 
 func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, APIURL+"/measurements/"+id, nil)
+	req, err := c.newRequest(ctx, http.MethodGet, APIURL+"/measurements/"+id, nil)
 
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept-Encoding", "br")
 
 	etag := c.getETag(id)
@@ -323,12 +315,32 @@ func DecodeMTRHops(hops json.RawMessage) ([]MTRHop, error) {
 	return t, nil
 }
 
-func DecodeHTTPHeaders(headers json.RawMessage) (map[string]string, error) {
-	h := map[string]string{}
-	err := json.Unmarshal(headers, &h)
+func DecodeHTTPHeaders(headers json.RawMessage) (map[string][]string, error) {
+	rawHeaders := map[string]json.RawMessage{}
+	err := json.Unmarshal(headers, &rawHeaders)
 
 	if err != nil {
 		return nil, &MeasurementError{Message: "invalid headers format returned"}
+	}
+
+	h := make(map[string][]string, len(rawHeaders))
+
+	for name, rawValue := range rawHeaders {
+		var values []string
+
+		if err := json.Unmarshal(rawValue, &values); err == nil {
+			h[name] = values
+
+			continue
+		}
+
+		var value string
+
+		if err := json.Unmarshal(rawValue, &value); err != nil {
+			return nil, &MeasurementError{Message: "invalid headers format returned"}
+		}
+
+		h[name] = []string{value}
 	}
 
 	return h, nil
