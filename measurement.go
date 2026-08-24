@@ -342,12 +342,32 @@ func DecodeMTRHops(hops json.RawMessage) ([]MTRHop, error) {
 	return t, nil
 }
 
-func DecodeHTTPHeaders(headers json.RawMessage) (map[string]string, error) {
-	h := map[string]string{}
-	err := json.Unmarshal(headers, &h)
+func DecodeHTTPHeaders(headers json.RawMessage) (map[string][]string, error) {
+	rawHeaders := map[string]json.RawMessage{}
+	err := json.Unmarshal(headers, &rawHeaders)
 
 	if err != nil {
 		return nil, &MeasurementError{Message: "invalid headers format returned"}
+	}
+
+	h := make(map[string][]string, len(rawHeaders))
+
+	for name, rawValue := range rawHeaders {
+		var values []string
+
+		if err := json.Unmarshal(rawValue, &values); err == nil {
+			h[name] = values
+
+			continue
+		}
+
+		var value string
+
+		if err := json.Unmarshal(rawValue, &value); err != nil {
+			return nil, &MeasurementError{Message: "invalid headers format returned"}
+		}
+
+		h[name] = []string{value}
 	}
 
 	return h, nil
