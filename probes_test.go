@@ -56,6 +56,8 @@ func Test_Probes(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/probes" && r.Method == http.MethodGet {
+			assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
+			assert.Equal(t, "Bearer tok3n", r.Header.Get("Authorization"))
 			w.Header().Set("Content-Type", "application/json")
 			b, _ := json.Marshal(expectedResponse)
 			_, err := w.Write(b)
@@ -73,7 +75,10 @@ func Test_Probes(t *testing.T) {
 
 	APIURL = server.URL
 
-	client := NewClient(Config{})
+	client := NewClient(Config{
+		AuthToken: "tok3n",
+		UserAgent: testUserAgent,
+	})
 
 	res, err := client.Probes(t.Context())
 	assert.Nil(t, err)
