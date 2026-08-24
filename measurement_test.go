@@ -945,7 +945,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 		inProgressLaterTimeout    = `{"id":"abcd", "status":"in-progress", "timeout":30}`
 		finishedResponse          = `{"id":"abcd", "status":"finished"}`
 		finishedTimeoutResponse   = `{"id":"abcd", "status":"finished", "timeout":5}`
-		timeoutError              = "timed out waiting for measurement abcd to finish"
+		timeoutError              = "timed out waiting for measurement abcd to finish: context deadline exceeded"
 	)
 
 	t.Run("calculates the timeout from the first response", func(t *testing.T) {
@@ -984,6 +984,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 
 					assert.Nil(t, res)
 					assert.EqualError(t, err, timeoutError)
+					assert.ErrorIs(t, err, context.DeadlineExceeded)
 					assert.Equal(t, test.timeout+measurementPollInterval, time.Since(start))
 					assert.Equal(t, int(test.timeout/measurementPollInterval)+2, requestCount)
 				})
@@ -1058,6 +1059,7 @@ func Test_AwaitMeasurement(t *testing.T) {
 					} else {
 						assert.Nil(t, res)
 						assert.EqualError(t, err, timeoutError)
+						assert.ErrorIs(t, err, context.DeadlineExceeded)
 					}
 
 					assert.Equal(t, initialRequestDuration, time.Since(start))
@@ -1084,6 +1086,28 @@ func Test_AwaitMeasurement(t *testing.T) {
 
 			assert.Nil(t, res)
 			assert.ErrorIs(t, err, context.Canceled)
+			assert.Equal(t, measurementPollInterval/2, time.Since(start))
+			assert.Equal(t, 1, requestCount)
+		})
+	})
+
+	t.Run("honors an earlier caller deadline while waiting to poll", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			requestCount := 0
+			transport := roundTripFunc(func(_ *http.Request) string {
+				requestCount++
+
+				return inProgressTimeoutResponse
+			})
+			client := NewClient(Config{HTTPClient: &http.Client{Transport: transport, Timeout: 30 * time.Second}})
+			ctx, cancel := context.WithTimeout(context.Background(), measurementPollInterval/2)
+			defer cancel()
+			start := time.Now()
+
+			res, err := client.AwaitMeasurement(ctx, measurementID)
+
+			assert.Nil(t, res)
+			assert.ErrorIs(t, err, context.DeadlineExceeded)
 			assert.Equal(t, measurementPollInterval/2, time.Since(start))
 			assert.Equal(t, 1, requestCount)
 		})

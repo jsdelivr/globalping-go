@@ -151,7 +151,7 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 
 	for m.Status == MeasurementStatusInProgress {
 		if time.Since(start) > maxDuration {
-			return nil, fmt.Errorf("timed out waiting for measurement %s to finish", id)
+			return nil, fmt.Errorf("timed out waiting for measurement %s to finish: %w", id, context.DeadlineExceeded)
 		}
 
 		select {
