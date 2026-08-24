@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	defaultDate = "Thu, 13 Nov 2025 07:13:37 GMT"
+	defaultDate   = "Thu, 13 Nov 2025 07:13:37 GMT"
+	testUserAgent = "globalping-go-test/1.0"
 )
 
 func Test_ProbeResult_FailureSource(t *testing.T) {
@@ -114,6 +115,7 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			requestBody := make(chan []byte, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
 				body, err := io.ReadAll(r.Body)
 				assert.NoError(t, err)
 				requestBody <- body
@@ -124,7 +126,7 @@ func Test_CreateMeasurement_Locations(t *testing.T) {
 			defer server.Close()
 			APIURL = server.URL
 
-			client := NewClient(Config{})
+			client := NewClient(Config{UserAgent: testUserAgent})
 			res, err := client.CreateMeasurement(t.Context(), test.measurement)
 
 			if test.expectedErr != "" {
@@ -893,6 +895,8 @@ func Test_GetMeasurement_WithBrotli(t *testing.T) {
 		parts := strings.Split(r.URL.Path, "/")
 		id := parts[len(parts)-1]
 
+		assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
+		assert.Equal(t, "Bearer secret", r.Header.Get("Authorization"))
 		assert.Equal(t, "br", r.Header.Get("Accept-Encoding"))
 
 		m := &Measurement{
@@ -915,7 +919,10 @@ func Test_GetMeasurement_WithBrotli(t *testing.T) {
 
 	defer s.Close()
 
-	client := NewClient(Config{})
+	client := NewClient(Config{
+		AuthToken: "secret",
+		UserAgent: testUserAgent,
+	})
 
 	m, err := client.GetMeasurement(t.Context(), id)
 	assert.NoError(t, err)

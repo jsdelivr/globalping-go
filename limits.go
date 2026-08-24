@@ -8,16 +8,10 @@ import (
 )
 
 func (c *client) Limits(ctx context.Context) (*LimitsResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, APIURL+"/limits", nil)
+	req, err := c.newRequest(ctx, http.MethodGet, APIURL+"/limits", nil)
 
 	if err != nil {
 		return nil, err
-	}
-
-	token := c.authToken.Load()
-
-	if token != nil {
-		req.Header.Set("Authorization", "Bearer "+*token)
 	}
 
 	res, err := c.http.Do(req)

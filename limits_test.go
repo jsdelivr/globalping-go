@@ -29,6 +29,7 @@ func Test_Limits(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/limits" && r.Method == http.MethodGet {
 			assert.Equal(t, "Bearer tok3n", r.Header.Get("Authorization"))
+			assert.Equal(t, testUserAgent, r.Header.Get("User-Agent"))
 			w.Header().Set("Content-Type", "application/json")
 			b, _ := json.Marshal(expectedResponse)
 			_, err := w.Write(b)
@@ -48,6 +49,7 @@ func Test_Limits(t *testing.T) {
 
 	client := NewClient(Config{
 		AuthToken: "tok3n",
+		UserAgent: testUserAgent,
 	})
 
 	res, err := client.Limits(t.Context())

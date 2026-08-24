@@ -8,16 +8,10 @@ import (
 )
 
 func (c *client) Probes(ctx context.Context) (*ProbesResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, APIURL+"/probes", nil)
+	req, err := c.newRequest(ctx, http.MethodGet, APIURL+"/probes", nil)
 
 	if err != nil {
 		return nil, err
-	}
-
-	token := c.authToken.Load()
-
-	if token != nil {
-		req.Header.Set("Authorization", "Bearer "+*token)
 	}
 
 	res, err := c.http.Do(req)
