@@ -93,7 +93,7 @@ func Test_HTTPError_FallbackBodies(t *testing.T) {
 				assert.NoError(t, err)
 			}))
 			defer server.Close()
-			APIURL = server.URL
+			setAPIURL(t, server.URL)
 
 			client := NewClient(Config{})
 			_, err := client.CreateMeasurement(t.Context(), &MeasurementCreate{
@@ -222,7 +222,7 @@ func Test_HTTPError_CorruptBrotliErrorBody(t *testing.T) {
 		assert.NoError(t, err)
 	}))
 	defer server.Close()
-	APIURL = server.URL
+	setAPIURL(t, server.URL)
 
 	client := NewClient(Config{})
 	_, err := client.GetMeasurementRaw(t.Context(), "measurement-id")
@@ -235,6 +235,14 @@ func Test_HTTPError_CorruptBrotliErrorBody(t *testing.T) {
 	}
 
 	assert.Error(t, errors.Unwrap(err))
+}
+
+func setAPIURL(t *testing.T, url string) {
+	t.Helper()
+
+	previousAPIURL := APIURL
+	t.Cleanup(func() { APIURL = previousAPIURL })
+	APIURL = url
 }
 
 func newErrorServer(t *testing.T, body string, compressed bool) *httptest.Server {
@@ -263,7 +271,7 @@ func newErrorServer(t *testing.T, body string, compressed bool) *httptest.Server
 		assert.NoError(t, err)
 	}))
 
-	APIURL = server.URL
+	setAPIURL(t, server.URL)
 
 	return server
 }
