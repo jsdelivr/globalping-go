@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -58,7 +59,7 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 
 	var bodyReader io.Reader = res.Body
 
-	if res.Header.Get("Content-Encoding") == "br" {
+	if strings.EqualFold(res.Header.Get("Content-Encoding"), "br") {
 		bodyReader = brotli.NewReader(bodyReader)
 	}
 
@@ -194,7 +195,7 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 
 	var bodyReader io.Reader = res.Body
 
-	if res.Header.Get("Content-Encoding") == "br" {
+	if strings.EqualFold(res.Header.Get("Content-Encoding"), "br") {
 		bodyReader = brotli.NewReader(bodyReader)
 	}
 

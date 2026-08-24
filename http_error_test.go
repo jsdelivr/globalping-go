@@ -253,7 +253,7 @@ func newErrorServer(t *testing.T, body string, compressed bool) *httptest.Server
 
 		if compressed {
 			assert.Equal(t, "br", r.Header.Get("Accept-Encoding"))
-			w.Header().Set("Content-Encoding", "br")
+			w.Header().Set("Content-Encoding", "Br")
 		}
 
 		w.WriteHeader(http.StatusServiceUnavailable)
