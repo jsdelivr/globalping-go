@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -49,42 +50,32 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		_ = res.Body.Close()
 	}()
 
+	var bodyReader io.Reader = res.Body
+
+	if strings.EqualFold(res.Header.Get("Content-Encoding"), "br") {
+		bodyReader = brotli.NewReader(bodyReader)
+	}
+
 	if res.StatusCode != http.StatusAccepted {
-		b, err := io.ReadAll(res.Body)
+		b, err := io.ReadAll(bodyReader)
 
 		if err != nil {
-			return nil, err
+			return nil, newHTTPErrorWithCause(res.StatusCode, res.Header, err)
 		}
 
-		resErr := &MeasurementErrorResponse{
-			Error: &MeasurementError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			},
-		}
+		resErr := &MeasurementErrorResponse{}
 
 		err = json.Unmarshal(b, resErr)
 
-		if err != nil {
-			return nil, err
+		if err != nil || resErr.Error == nil {
+			return nil, newHTTPError(res.StatusCode, res.Header)
 		}
 
-		if resErr.Error == nil {
-			resErr.Error = &MeasurementError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			}
-		}
-
+		resErr.Error.StatusCode = res.StatusCode
+		resErr.Error.Header = res.Header
 		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
-	}
-
-	var bodyReader io.Reader = res.Body
-
-	if res.Header.Get("Content-Encoding") == "br" {
-		bodyReader = brotli.NewReader(bodyReader)
 	}
 
 	b, err := io.ReadAll(bodyReader)
@@ -194,6 +185,12 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 		_ = res.Body.Close()
 	}()
 
+	var bodyReader io.Reader = res.Body
+
+	if strings.EqualFold(res.Header.Get("Content-Encoding"), "br") {
+		bodyReader = brotli.NewReader(bodyReader)
+	}
+
 	if res.StatusCode == http.StatusNotModified {
 		b := c.getCachedResponse(id)
 
@@ -208,41 +205,25 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 	}
 
 	if res.StatusCode != http.StatusOK {
-		b, err := io.ReadAll(res.Body)
+		b, err := io.ReadAll(bodyReader)
 
 		if err != nil {
-			return nil, err
+			return nil, newHTTPErrorWithCause(res.StatusCode, res.Header, err)
 		}
 
-		resErr := &MeasurementErrorResponse{
-			Error: &MeasurementError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			},
-		}
+		resErr := &MeasurementErrorResponse{}
 
 		err = json.Unmarshal(b, resErr)
 
-		if err != nil {
-			return nil, err
+		if err != nil || resErr.Error == nil {
+			return nil, newHTTPError(res.StatusCode, res.Header)
 		}
 
-		if resErr.Error == nil {
-			resErr.Error = &MeasurementError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			}
-		}
-
+		resErr.Error.StatusCode = res.StatusCode
+		resErr.Error.Header = res.Header
 		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
-	}
-
-	var bodyReader io.Reader = res.Body
-
-	if res.Header.Get("Content-Encoding") == "br" {
-		bodyReader = brotli.NewReader(bodyReader)
 	}
 
 	b, err := io.ReadAll(bodyReader)
