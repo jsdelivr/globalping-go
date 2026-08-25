@@ -16,7 +16,7 @@ const releaseNoteTypes = [
 module.exports = {
 	branches: ["master"],
 	tagFormat: "v${version}",
-	repositoryUrl: "https://github.com/jsdelivr/globalping-go.git",
+	repositoryUrl: "git@github.com:jsdelivr/globalping-go.git",
 	plugins: [
 		["@semantic-release/commit-analyzer", {
 			preset: "conventionalcommits",
@@ -33,7 +33,12 @@ module.exports = {
 		}],
 		["@semantic-release/exec", {
 			verifyReleaseCmd: "node .github/scripts/verify-module.cjs ${nextRelease.version}",
+			prepareCmd: "node .github/scripts/set-version.cjs ${nextRelease.version}",
 		}],
 		"@semantic-release/github",
+		["@semantic-release/git", {
+			assets: ["version.go"],
+			message: "chore: [skip ci] bump version to ${nextRelease.version}",
+		}],
 	],
 };

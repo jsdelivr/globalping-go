@@ -89,7 +89,7 @@ func NewClient(config Config) Client {
 	}
 
 	if config.UserAgent == "" {
-		c.userAgent = "jsdelivr/globalping-go"
+		c.userAgent = "globalping-go/" + Version + " (https://github.com/jsdelivr/globalping-go)"
 	}
 
 	if config.AuthToken != "" {
