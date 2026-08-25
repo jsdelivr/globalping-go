@@ -59,9 +59,11 @@ type Client interface {
 }
 
 type Config struct {
-	AuthToken          string // Your GlobalPing API access token. Optional.
-	UserAgent          string // User agent string for API requests. Optional.
-	CacheExpireSeconds int64  // Cache entry expiration time in seconds. 0 means no expiration.
+	AuthToken string // Your GlobalPing API access token. Optional.
+	// UserAgent is the user agent string for API requests. Optional.
+	// It defaults to "globalping-go/<Version> (https://github.com/jsdelivr/globalping-go)".
+	UserAgent          string
+	CacheExpireSeconds int64 // Cache entry expiration time in seconds. 0 means no expiration.
 
 	HTTPClient *http.Client // If set, this client will be used for API requests. Optional.
 }
