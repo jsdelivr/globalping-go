@@ -43,6 +43,14 @@ func (e *ProbesError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Type, e.Message)
 }
 
+func (e *ProbesError) Unwrap() error {
+	if e.StatusCode == 0 {
+		return nil
+	}
+
+	return newHTTPError(e.StatusCode, e.Header)
+}
+
 // ProbesErrorResponse wraps a ProbesError
 type ProbesErrorResponse struct {
 	Error *ProbesError `json:"error"`

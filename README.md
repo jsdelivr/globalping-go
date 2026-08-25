@@ -117,14 +117,15 @@ Returns rate limits for the current user (if authenticated) or IP address (if no
 
 ### Error handling
 
-API errors are returned as `*globalping.MeasurementError` instances. You can access the error code and headers using the `StatusCode` and `Header` fields.
+HTTP failures are exposed as `*globalping.HTTPError` values. Use `errors.As` to access the response status and headers, including when the HTTP error is wrapped by an endpoint-specific error such as `*globalping.MeasurementError`, `*globalping.ProbesError`, or `*globalping.LimitsError`.
 
 ```go
   measurement, err := client.GetMeasurement(ctx, res.ID)
   if err != nil {
-    if measurementErr, ok := err.(*globalping.MeasurementError); ok {
-      // measurementErr.StatusCode
-      // measurementErr.Header
+    var httpErr *globalping.HTTPError
+    if errors.As(err, &httpErr) {
+      // httpErr.StatusCode
+      // httpErr.Header
     } else {
       fmt.Println(err)
     }

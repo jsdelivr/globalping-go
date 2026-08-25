@@ -8,16 +8,10 @@ import (
 )
 
 func (c *client) Limits(ctx context.Context) (*LimitsResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, APIURL+"/limits", nil)
+	req, err := c.newRequest(ctx, http.MethodGet, APIURL+"/limits", nil)
 
 	if err != nil {
 		return nil, err
-	}
-
-	token := c.authToken.Load()
-
-	if token != nil {
-		req.Header.Set("Authorization", "Bearer "+*token)
 	}
 
 	res, err := c.http.Do(req)
@@ -34,21 +28,19 @@ func (c *client) Limits(ctx context.Context) (*LimitsResponse, error) {
 		b, err := io.ReadAll(res.Body)
 
 		if err != nil {
-			return nil, err
+			return nil, newHTTPErrorWithCause(res.StatusCode, res.Header, err)
 		}
 
-		resErr := &LimitsErrorResponse{
-			Error: &LimitsError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			},
-		}
+		resErr := &LimitsErrorResponse{}
 
 		err = json.Unmarshal(b, resErr)
 
-		if err != nil {
-			return nil, err
+		if err != nil || resErr.Error == nil {
+			return nil, newHTTPError(res.StatusCode, res.Header)
 		}
+
+		resErr.Error.StatusCode = res.StatusCode
+		resErr.Error.Header = res.Header
 
 		return nil, resErr.Error
 	}

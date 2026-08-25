@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -30,21 +31,14 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, APIURL+"/measurements", bytes.NewBuffer(data))
+	req, err := c.newRequest(ctx, http.MethodPost, APIURL+"/measurements", bytes.NewBuffer(data))
 
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept-Encoding", "br")
 	req.Header.Set("Content-Type", "application/json")
-
-	token := c.authToken.Load()
-
-	if token != nil {
-		req.Header.Set("Authorization", "Bearer "+*token)
-	}
 
 	res, err := c.http.Do(req)
 
@@ -56,42 +50,32 @@ func (c *client) CreateMeasurement(ctx context.Context, measurement *Measurement
 		_ = res.Body.Close()
 	}()
 
+	var bodyReader io.Reader = res.Body
+
+	if strings.EqualFold(res.Header.Get("Content-Encoding"), "br") {
+		bodyReader = brotli.NewReader(bodyReader)
+	}
+
 	if res.StatusCode != http.StatusAccepted {
-		b, err := io.ReadAll(res.Body)
+		b, err := io.ReadAll(bodyReader)
 
 		if err != nil {
-			return nil, err
+			return nil, newHTTPErrorWithCause(res.StatusCode, res.Header, err)
 		}
 
-		resErr := &MeasurementErrorResponse{
-			Error: &MeasurementError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			},
-		}
+		resErr := &MeasurementErrorResponse{}
 
 		err = json.Unmarshal(b, resErr)
 
-		if err != nil {
-			return nil, err
+		if err != nil || resErr.Error == nil {
+			return nil, newHTTPError(res.StatusCode, res.Header)
 		}
 
-		if resErr.Error == nil {
-			resErr.Error = &MeasurementError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			}
-		}
-
+		resErr.Error.StatusCode = res.StatusCode
+		resErr.Error.Header = res.Header
 		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
-	}
-
-	var bodyReader io.Reader = res.Body
-
-	if res.Header.Get("Content-Encoding") == "br" {
-		bodyReader = brotli.NewReader(bodyReader)
 	}
 
 	b, err := io.ReadAll(bodyReader)
@@ -151,7 +135,7 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 
 	for m.Status == MeasurementStatusInProgress {
 		if time.Since(start) > maxDuration {
-			return nil, fmt.Errorf("timed out waiting for measurement %s to finish", id)
+			return nil, fmt.Errorf("timed out waiting for measurement %s to finish: %w", id, context.DeadlineExceeded)
 		}
 
 		select {
@@ -177,13 +161,12 @@ func (c *client) AwaitMeasurement(ctx context.Context, id string) (*Measurement,
 }
 
 func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, APIURL+"/measurements/"+id, nil)
+	req, err := c.newRequest(ctx, http.MethodGet, APIURL+"/measurements/"+id, nil)
 
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept-Encoding", "br")
 
 	etag := c.getETag(id)
@@ -202,6 +185,12 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 		_ = res.Body.Close()
 	}()
 
+	var bodyReader io.Reader = res.Body
+
+	if strings.EqualFold(res.Header.Get("Content-Encoding"), "br") {
+		bodyReader = brotli.NewReader(bodyReader)
+	}
+
 	if res.StatusCode == http.StatusNotModified {
 		b := c.getCachedResponse(id)
 
@@ -216,41 +205,25 @@ func (c *client) GetMeasurementRaw(ctx context.Context, id string) ([]byte, erro
 	}
 
 	if res.StatusCode != http.StatusOK {
-		b, err := io.ReadAll(res.Body)
+		b, err := io.ReadAll(bodyReader)
 
 		if err != nil {
-			return nil, err
+			return nil, newHTTPErrorWithCause(res.StatusCode, res.Header, err)
 		}
 
-		resErr := &MeasurementErrorResponse{
-			Error: &MeasurementError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			},
-		}
+		resErr := &MeasurementErrorResponse{}
 
 		err = json.Unmarshal(b, resErr)
 
-		if err != nil {
-			return nil, err
+		if err != nil || resErr.Error == nil {
+			return nil, newHTTPError(res.StatusCode, res.Header)
 		}
 
-		if resErr.Error == nil {
-			resErr.Error = &MeasurementError{
-				StatusCode: res.StatusCode,
-				Header:     res.Header,
-			}
-		}
-
+		resErr.Error.StatusCode = res.StatusCode
+		resErr.Error.Header = res.Header
 		resErr.Error.Links = resErr.Links
 
 		return nil, resErr.Error
-	}
-
-	var bodyReader io.Reader = res.Body
-
-	if res.Header.Get("Content-Encoding") == "br" {
-		bodyReader = brotli.NewReader(bodyReader)
 	}
 
 	b, err := io.ReadAll(bodyReader)
@@ -342,12 +315,32 @@ func DecodeMTRHops(hops json.RawMessage) ([]MTRHop, error) {
 	return t, nil
 }
 
-func DecodeHTTPHeaders(headers json.RawMessage) (map[string]string, error) {
-	h := map[string]string{}
-	err := json.Unmarshal(headers, &h)
+func DecodeHTTPHeaders(headers json.RawMessage) (map[string][]string, error) {
+	rawHeaders := map[string]json.RawMessage{}
+	err := json.Unmarshal(headers, &rawHeaders)
 
 	if err != nil {
 		return nil, &MeasurementError{Message: "invalid headers format returned"}
+	}
+
+	h := make(map[string][]string, len(rawHeaders))
+
+	for name, rawValue := range rawHeaders {
+		var values []string
+
+		if err := json.Unmarshal(rawValue, &values); err == nil {
+			h[name] = values
+
+			continue
+		}
+
+		var value string
+
+		if err := json.Unmarshal(rawValue, &value); err != nil {
+			return nil, &MeasurementError{Message: "invalid headers format returned"}
+		}
+
+		h[name] = []string{value}
 	}
 
 	return h, nil
