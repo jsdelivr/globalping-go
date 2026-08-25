@@ -140,7 +140,7 @@ A user authentication token obtained from [https://dash.globalping.io](https://d
 
 `UserAgent`
 
-Refers to this library by default. If you build another open-source project based on this library, you should override this value to point to your project instead.
+Defaults to `globalping-go/<Version> (https://github.com/jsdelivr/globalping-go)`, where `<Version>` is the current SDK version. If you build another open-source project based on this library, you should override this value to point to your project instead.
 
 `CacheExpireSeconds`
 
